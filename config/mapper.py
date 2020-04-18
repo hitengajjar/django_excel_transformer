@@ -1,96 +1,90 @@
+import copy
 import logging
 import os
 import re
 import traceback
-
-import yaml
+from itertools import chain
+import builtins
 from box import Box
 
-from ..common import get_attr_from_dict, lower, get_ref_model_fields, get_model_col
+from ..common import get_attr_from_dict, lower, get_ref_model_fields, get_model_col, val
+#
+# try:
+#     from yaml import CLoader as Loader, CDumper as Dumper
+# except ImportError:
+#     from yaml import Loader, Dumper
 
-try:
-    from yaml import CLoader as Loader, CDumper as Dumper
-except ImportError:
-    from yaml import Loader, Dumper
-
-from collections import OrderedDict
-
-
-def ordered_load(stream, Loader=yaml.Loader, object_pairs_hook=OrderedDict):
-    'Inspired from https://stackoverflow.com/a/21912744/2133129'
-
-    class OrderedLoader(Loader):
-        pass
-
-    def construct_mapping(loader, node):
-        loader.flatten_mapping(node)
-        return object_pairs_hook(loader.construct_pairs(node))
-
-    OrderedLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, construct_mapping)
-    return yaml.load(stream, OrderedLoader)
-
-
-def val(boxv1, v2):
-    return v2 if not boxv1 or boxv1 == Box() else boxv1
-
+from collections import namedtuple
+#
+# def ordered_load(stream, Loader=yaml.Loader, object_pairs_hook=OrderedDict):
+#     'Inspired from https://stackoverflow.com/a/21912744/2133129'
+#
+#     class OrderedLoader(Loader):
+#         pass
+#
+#     def construct_mapping(loader, node):
+#         loader.flatten_mapping(node)
+#         return object_pairs_hook(loader.construct_pairs(node))
+#
+#     OrderedLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, construct_mapping)
+#     return yaml.load(stream, OrderedLoader)
+#
 
 def get_defaults(defaults):
     f = Box(default_box=True)
-    config_f = defaults.formatting
+    if 'formatting' in defaults:
+        config_f = defaults.formatting
 
-    # Sheet level
-    f.read_only = val(config_f.read_only, False)
+        # Sheet level
+        f.read_only = val(config_f.read_only, False)
+        f.tab_color = "D9D9D9"
 
-    # Table level
-    f.table_style.name = val(config_f.read_only, 'TableStyleMedium')
-    f.table_style.show_first_column = val(config_f.table_style.show_first_column, False)
-    f.table_style.show_last_column = val(config_f.table_style.show_last_column, False)
-    f.table_style.show_row_stripes = val(config_f.table_style.show_row_stripes, True)
-    f.table_style.show_column_stripes = val(config_f.table_style.show_column_stripes, True)
-
-    # Column level
-    f.data.chars_wrap = val(config_f.data.chars_wrap, 20)
-    f.data.comment.text = val(config_f.data.comment.text, '')
-    f.data.comment.author = val(config_f.data.comment.author, 'admin@github.com')
-    f.data.comment.height_len = val(config_f.data.comment.height_len, 110)
-    f.data.comment.width_len = val(config_f.data.comment.width_len, 230)
-
+        # Table level
+        f.table_style.name = val(config_f.read_only, 'TableStyleMedium')
+        f.table_style.show_first_column = val(config_f.table_style.show_first_column, False)
+        f.table_style.show_last_column = val(config_f.table_style.show_last_column, False)
+        f.table_style.show_row_stripes = val(config_f.table_style.show_row_stripes, True)
+        f.table_style.show_column_stripes = val(config_f.table_style.show_column_stripes, True)
+        # Column level
+        f.data.chars_wrap = val(config_f.data.chars_wrap, 20)
+        f.data.comment.text = val(config_f.data.comment.text, '')
+        f.data.comment.author = val(config_f.data.comment.author, 'admin@github.com')
+        f.data.comment.height_len = val(config_f.data.comment.height_len, 110)
+        f.data.comment.width_len = val(config_f.data.comment.width_len, 230)
     default = Box(default_box=True)
     default.formatting = f
     return default
+
+Reference = namedtuple('Reference', ['model', 'field'])
+ColFormatting = namedtuple('ColFormatting', ['comment', 'chars_wrap'])
+# c = ColFormatting(comment=Box(text='comment', author='author', height_len=100, width_len=230), chars_wrap=20)
+Column = namedtuple('Column', ['name', 'formatting', 'references'])
+# c = Column(name='dev_orm', formatting=ColFormatting, references=OrderedDict(component=dict(model='Component', field='component')))
+Sheet = namedtuple('Sheet', ['name', 'model', 'index_key', 'formatting', 'filters', 'columns'])
+# s = Sheet('sheet_nm', dict(read_only=True), dict(ascsort=['component', 'order'], latest=['order']), [Column(...), Column(...)])
 
 class Mapper(object):
     def __init__(self, file_name):
         if not os.path.isfile(file_name):
             raise FileNotFoundError("[%s]" % (file_name))
-        stream = open(file_name, "r").read()
+        stream = builtins.open(file_name, "r").read()
         self._file_name = file_name
-        _c = Box(default_box=True)
-        _c = Box.from_yaml(stream)  # DefaultMunch(ymldict)
+        _c = Box.from_yaml(stream, default_box=True)
         _c._box_config['default_box'] = True
         _c.__name__ = 'mapper.yml'
         self._val_status = False
         self.datasets = lower(get_attr_from_dict(_c, 'datasets'))
-        # self.datasets._box_config['default_box'] = True
         self.sheets = {i.sheet_name: i for i in lower(get_attr_from_dict(_c, 'sheets'))}
-        # self.sheets._box_config['default_box'] = True
-        self.filters = _c.filters  # dict.fromkeys(val(_c.filters, {}), 0)
+        self.filters = _c.filters
         self.defaults = get_defaults(_c.defaults)
 
-        errs = self.validate()
+        errs = self.parse()
         if errs:
             raise Exception('Errors in %s, %s' % (file_name, *dict(errors=errs)))
         self._val_status = True
+        self.get_sheet('CompVersion_wo_latest')
 
-    def link_datasets(self):
-        """
-        Links dataset with Django model
-        """
-        for ds in self.datasets:
-            ds.table_name  # TODO: HG: Complete this part
-        pass
-
-    def validate(self):
+    def parse(self):
         """
         Links sheets with datasets and eventually to respective Django model.
         returns list of errors. If empty then no errors
@@ -99,7 +93,6 @@ class Mapper(object):
         # TODO: HG: For better error reporting YAML line numbers are useful. Consider https://stackoverflow.com/questions/13319067/parsing-yaml-return-with-line-number
 
         errs = Box(default_box=True)
-
         def missing_entries_frm_list(lst: list, entries: list):
             return None if not entries else entries if not lst else list(set(entries) - set(lst))
 
@@ -115,18 +108,46 @@ class Mapper(object):
             vals.append(Box(default_box=True, sheet_name=label, field=field, msg=msg, **entries))
             errs[label] = vals
 
-        def get_formatter(field, formatting) -> dict:
-            """returns formatter for field if exists else None"""
-            fmtter = None
-            if 'data' in formatting:
-                for d in formatting.data:
-                    for col in d.columns:
-                        if re.findall('^' + col, field):
-                            fmtter = d
-            return fmtter
+        def _get_tbl_formatting(ow):
+            """default is considered if overwrite doesn't have value"""
+            default = self.defaults.formatting
+            if not ow:
+                formatting = default
+            else:
+                formatting = Box(default_box=True)
 
-        def validate_dataset(ds, table_name, sheet_name, ds_field) -> Box:
-            # nonlocal table_name, sheet_name, ds_field
+                formatting.read_only = ow.read_only if ow.read_only else default.read_only
+                formatting.tab_color = ow.tab_color if ow.tab_color else default.tab_color
+
+                formatting.table_style.name = ow.table_style.name if ow.table_style.name else default.table_style.name
+                formatting.table_style.show_first_column = ow.table_style.show_first_column if ow.table_style.show_first_column else default.table_style.show_first_column
+                formatting.table_style.show_last_column = ow.table_style.show_last_column if ow.table_style.show_last_column else default.table_style.show_last_column
+                formatting.table_style.show_row_stripes = ow.table_style.show_row_stripes if ow.table_style.show_row_stripes else default.table_style.show_row_stripes
+                formatting.table_style.show_column_stripes = ow.table_style.show_column_stripes if ow.table_style.show_column_stripes else default.table_style.show_column_stripes
+
+            return formatting
+
+        def _get_col_formatting(field, sheet_formatting) -> Box(chars_wrap=20,comment=None):
+            """returns formatting for field if exists else None"""
+            default = self.defaults.formatting.data
+            col_format = Box(default_box=True, chars_wrap=default.chars_wrap)
+            # cols = list(chain(*[cols for cols in sheet_formatting.data]))
+
+            for data_cols in sheet_formatting.data:
+                for col in data_cols.columns:
+                    if re.findall('^' + col, field):
+                        if data_cols.chars_wrap:
+                            col_format.chars_wrap = data_cols.chars_wrap
+                        if data_cols.comment:
+                            col_format.comment.text = data_cols.comment.text if data_cols.comment.text else default.comment.text
+                            col_format.comment.author = data_cols.comment.author if data_cols.comment.author else default.comment.author
+                            col_format.comment.height_len = data_cols.comment.height_len if data_cols.comment.height_len else default.comment.height_len
+                            col_format.comment.width_len = data_cols.comment.width_len if data_cols.comment.width_len else default.comment.width_len
+                        # we don't break since we allow overwriting - so same field can have formatting multiple times once with * and then explicit value
+
+            return col_format  # nothing found, return default
+
+        def _parse_dataset(ds, table_name, sheet_name, ds_field) -> Box:
             (model, model_fields) = get_model_col(table_name)
             yml_cols = yml_idx_cols = yml_ref = []
             if not model:
@@ -156,43 +177,49 @@ class Mapper(object):
                               '%s.data[%d].columns field isn\'t defined in config file' % (ds_field, idx))
                     else:
                         columns = datalist['columns']
-                        reference = datalist['reference'] if 'reference' in datalist else []
+                        references = datalist['references'] if 'references' in datalist else []
                         for col in columns:
                             fields = [k for k in model_fields.keys() if col == '*' or re.findall('^' + col, k)]
                             if not fields:
                                 error(sheet_name, '%s.data[%d].columns[%s]' % (ds_field, idx, col),
                                       'field [%s] isn\'t defined in table [%s]' % (f, table_name))
                             else:
+                                ds.model = model
+                                if col == '*' and 'table_names' in ds:
+                                    del ds.table_names
+                                    ds.table_name = model.__module__ + "." + model._meta.model_name
                                 for f in fields:
                                     if f in ds.data:  # same field may appear multiple times due to support of '*', 'fieldpart_*' and explicit field
                                         # change field order.
                                         prev_obj = ds.data.pop(f)
                                         ds.data[f] = prev_obj  # changing field order
-                                    ds.data[f] = dict(reference=None)
-                                    for ref in reference:  # lets link the references if exists
+                                    else:
+                                        ds.data[f] = Box(default_box=True, references=None)
+                                    for ref in references:  # lets link the references if exists
                                         (ref_model, ref_field) = get_ref_model_fields(table_name, f, ref)
-                                        if not (ref_model or ref_field) and not (col == '*' or col[-1:] == '*'):
-                                            error(sheet_name, '%s.data[%d].columns[%s]' % (ds_field, idx, col),
+                                        if not (ref_model or ref_field):
+                                            if not (col == '*' or col[-1:] == '*'):
+                                                error(sheet_name, '%s.data[%d].columns[%s]' % (ds_field, idx, col),
                                                   'invalid reference [%s] for field [%s]' % (ref, f))
                                         else:
-                                            ds.data[f].reference = [] if not ds.data[f].reference else ds.data[
-                                                f].reference
-                                            ds.data[f].reference.append((ref_model, ref_field))
+                                            ds.data[f].references = [] if not ds.data[f].references else ds.data[
+                                                f].references
+                                            ds.data[f].references.append((ref_model, ref_field))
             return ds
 
         field_types = Box(chars_wrap=int, text=str, author=str, height_len=int, width_len=int,
                           name=str, show_first_column=bool, show_last_column=bool, show_row_stripes=bool,
-                          show_column_stripes=bool, read_only=bool, columns=list, reference=list, default_box=True)
+                          show_column_stripes=bool, read_only=bool, columns=list, references=list, default_box=True)
 
         required_fields = Box(sheets=Box(sheet_name=str, dataset=object, default_box=True),
                               filters=Box(column=str, filter=str),
                               datasets=Box(index_key=str, data=object, default_box=True)
-                                       + Box({'data.columns': str, 'data.reference': str}),
+                                       + Box({'data.columns': str, 'data.references': str}),
                               formatting=Box(default_box=True),
                               default_box=True)
         supported_fields = Box(sheets=required_fields.sheets + Box(views=str, formatting=object, default_box=True),
                                filters=required_fields.datasets + Box(sort=str, default_box=True),
-                               datasets=required_fields.datasets + Box({'data.reference': str, 'table_name': str, 'table_names': str}),
+                               datasets=required_fields.datasets + Box({'data.references': str, 'table_name': str, 'table_names': str}),
                                formatting=required_fields.formatting
                                           + Box({'read_only': str, 'table_style': object,
                                                  'table_style.name': str, 'table_style.show_first_column': bool,
@@ -213,7 +240,6 @@ class Mapper(object):
                 return
 
             fqfn = '%s.%s' % (parent_fields, field)
-            # print(fqfn, type(value), value)
             if field in field_types and not isinstance(value, field_types[field]):
                 error(label, fqfn,
                       'Unsupported type. Expected %s, but received %s' % (field_types[field], type(value)))
@@ -225,8 +251,6 @@ class Mapper(object):
                     validate_type(label, '', f, fqfn)
             elif field not in field_types:  # TODO: HG: use supported_fields here. # Challenge with lists -- need better logic for them
                 logging.debug('field %s not in field_types in sheet [%s]' % (fqfn, label))
-                # error(sheet_name, Box({'sheet_name': sheet_name, 'field': fqfn,
-                #                   'msg': 'Unsupported field'}))
 
         def validate_views(sheet_view):
             missing_views = missing_entries_frm_list(self.filters.keys(), sheet_view)
@@ -249,46 +273,43 @@ class Mapper(object):
                                             views=missing_views)
 
                 # Validate dataset existence
-                if 'dataset' not in sheet or sheet.dataset not in self.datasets:
+                if not sheet.dataset or sheet.dataset not in self.datasets:
                     error(sheet_name, '%s.dataset' % base_field, 'missing dataset. check mapper.datasets',
                           dataset=sheet.dataset if 'dataset' in sheet else "")
                 else:  # Validate dataset entry now
                     # TODO: HG: Need to use Box comparison
-                    ds = self.datasets[sheet.dataset].copy()
+                    ds = self.datasets[sheet.dataset]
                     ds_field = "%s.dataset.%s" % (base_field, sheet.dataset)
 
-                    # for e in missing_entries_frm_list(ds.keys(), ['index_key', 'data']):
-                    #     error(sheet_name, '%s.%s' % (ds_field, e), '%s missing' % e)
-
-                    validate_type(sheet_name, sheet.dataset, ds, 'mapper.datasets')
-
+                    validate_type(label=sheet_name, field=sheet.dataset, value=ds, parent_fields='mapper.datasets')
                     if '*' == sheet_name and 'table_names' in ds:
                         # special case
                         star_sheet_props = self.sheets.pop('*')
                         for table_name in ds.table_names:
                             table_name = table_name.rsplit('.', 1)[-1:][0].lower()
-                            transformed_ds = validate_dataset(ds=ds.copy(),
-                                                              table_name=table_name,
-                                                              sheet_name=table_name,
-                                                              ds_field=ds_field)
-                            sheet_name = table_name
-                            sheet = star_sheet_props.copy()
-                            sheet.sheet_name = sheet_name
-                            sheet.dataset_obj = transformed_ds
-
-                    else:
+                            sheet = copy.deepcopy(star_sheet_props)
+                            sheet.sheet_name = table_name
+                            sheet.dataset = _parse_dataset(ds=copy.deepcopy(ds), table_name=table_name,
+                                                              sheet_name=table_name, ds_field=ds_field)
+                            self.sheets[table_name] = sheet
+                    elif 'table_name' in ds:
                         table_name = ds.table_name.rsplit('.', 1)[-1:][0].lower()
                         sheet_name = table_name if '*' == sheet_name else sheet_name
-                        sheet.dataset_obj = validate_dataset(ds=ds.copy(),
-                                                                               table_name=table_name,
-                                                                               sheet_name=sheet_name,
-                                                                               ds_field=ds_field)
+                        sheet.dataset = _parse_dataset(ds=copy.deepcopy(ds), table_name=table_name, sheet_name=sheet_name,
+                                                             ds_field=ds_field)
+                    else:
+                        error(sheet_name, '%s' % ds_field, 'missing \'table_name\' entry. Check mapper.datasets. '
+                              'Note: \'table_names\' only supported with sheet_name \'*\'')
 
-                if 'formatting' in sheet:  # Validate formatting field types
-                    validate_type(sheet_name, 'formatting', sheet.formatting, 'mapper.sheets')
-                    datakeys = [k for k in sheet.dataset_obj.data.keys()]
+                    datakeys = [k for k in sheet.dataset.data.keys()]
+                    sheet_formatting = sheet.formatting.copy()
+                    del sheet.formatting.data
                     for f in datakeys:
-                        sheet.dataset_obj.data[f].formatter = get_formatter(f, sheet.formatting)
+                        sheet.dataset.data[f].formatting = _get_col_formatting(f, sheet_formatting)
+
+                # Validate and update formatting field types
+                validate_type(sheet_name, 'formatting', sheet.formatting, 'mapper.sheets')
+                sheet.formatting = _get_tbl_formatting(sheet.formatting)
 
             except Exception as e:
                 logging.error('Sheet [%s], exception: [%s]' % (sheet_name, e))
@@ -310,12 +331,12 @@ class Mapper(object):
 
     def get_dataset_data(self, ds) -> tuple():
         """
-        returns tuple (index_columns_list, [tuple(arr_idx, column)], [tuple(arr_idx, [reference])])
+        returns tuple (index_columns_list, [tuple(arr_idx, column)], [tuple(arr_idx, [references])])
         """
         # yml_cols = [(idx, col) for idx, datalist in enumerate(ds.data) for col in datalist['columns']]
         yml_cols = [col for datalist in ds.data for col in datalist['columns']]
-        yml_ref = [(idx, ref) for idx, datalist in enumerate(ds.data) if 'reference' in datalist for ref in
-                   datalist['reference']]
+        yml_ref = [(idx, ref) for idx, datalist in enumerate(ds.data) if 'references' in datalist for ref in
+                   datalist['references']]
         yml_idx = ds.index_key
 
         return yml_idx, yml_cols, yml_ref
@@ -327,8 +348,8 @@ class Mapper(object):
 
         if model_name.strip().lower() not in self.datasets:
             raise Exception('%s missing in datasets' % model_name)
-        if self._val_status == False: raise Exception('Ensure %s is validated' % self._file_name)
-
+        if self._val_status == False:
+            raise Exception('Ensure %s is validated' % self._file_name)
         ds = self.datasets[model_name]
         (model, model_fields) = get_model_col(ds.table_name)
         (yml_idx, yml_cols, yml_ref) = self.get_dataset_data(ds)
@@ -340,45 +361,36 @@ class Mapper(object):
                 fields += [f.name for f in model_fields if re.findall('^' + col.replace('*', '.*'), f.name)]
             else:
                 fields.append(col)
-
         return fields
 
-    def get_sheet(self, sheet_name: str):
-        """
-        Gets the sheet object with fields defined in mapping.yml and resolved references with table names.
-        """
-        if sheet_name.strip().lower() not in self.sheets:
-            raise Exception('%s missing in sheets' % sheet_name)
-        if self._val_status == False:
+    def get_sheets(self) -> list:
+        """ Provides list of sheets """
+        if not self._val_status:
+            raise Exception('Ensure %s is validated' % self._file_name)
+        return self.sheets.keys()
+
+
+    def get_sheet(self, sheet_nm: str) -> (Sheet, None):
+        """Sheet object if sheet_nm exists else None"""
+        if not self._val_status:
             raise Exception('Ensure %s is validated' % self._file_name)
 
-        sheet = self.sheets[sheet_name].copy()
-        ds = self.datasets[sheet.table_name].copy()
-
-        sheet.dataset = ds
-
-        table_name = self.datasets[ds].table_name.rsplit('.', 1)[-1:][0].lower()
-        (model, model_fields) = get_model_col(table_name)
-
-        default_col_formatting = self.defaults.formatting.data.copy()
-        default_col_formatting.pop('comment')
-
-        fields = {}
-        for datalist in ds.data:
-            columns = datalist['columns']
-            references = datalist['reference'] if 'reference' in datalist else None
-            for col in columns:
-                if col == '*':
-                    # map(lambda f: (dict(formatting=default_col_formatting)), model_fields)
-                    for f in [f.name for f in model_fields]:
-                        fields[f] = dict(formatting=default_col_formatting,
-                                         references=get_ref_model_fields(table_name, f, references))
-                elif col[-1:] == '*':
-                    for f in [f.name for f in model_fields if re.findall('^' + col.replace('*', '.*'), f.name)]:
-                        fields[f] = dict(formatting=default_col_formatting,
-                                         references=get_ref_model_fields(table_name, f, references))
-                else:
-                    fields[col] = dict(formatting=default_col_formatting,
-                                       references=get_ref_model_fields(table_name, col, references))
-
-        # TODO: HG: Finish this function
+        # We have defined below types earlier in this file
+        # Reference = namedtuple('Reference', ['model', 'field'])
+        # Column = namedtuple('Column', ['name', 'formatting', 'references'])
+        # Sheet = namedtuple('Sheet', ['name', 'formatting', 'filters', 'columns'])
+        sheet = None
+        if sheet_nm in self.sheets and 'dataset' in self.sheets[sheet_nm]:
+            s = self.sheets[sheet_nm]
+            ds = s.dataset
+            cols = []
+            for nm, item in ds.data.items():
+                references = [Reference(model=ref[0], field=ref[1]) for ref in item.references] if item.references else []
+                cols.append(Column(name=nm, formatting=item.formatting, references=references))
+            sheet = Sheet(name=sheet_nm,
+                          model=ds.model,
+                          index_key=ds.index_key,
+                          formatting=s.formatting,
+                          filters=s.filters,
+                          columns=cols)
+        return sheet

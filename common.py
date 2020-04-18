@@ -33,6 +33,8 @@ def fields_exists(datadict: {}, fields: []) -> (bool, []):
 
     return status, missing
 
+def val(boxv1, v2):
+    return v2 if not boxv1 or boxv1 == Box() else boxv1
 
 def get_attr_from_dict(box_obj, field):
     if field not in box_obj:
@@ -110,15 +112,18 @@ def get_ref_model_fields(model_name: str, col_name: str, ref: str) -> ():
         if model:
             model = model[0]
             model_cols = {f.name: f for f in model._meta.fields + model._meta.many_to_many}
+            ref_col_name = ref.rsplit('.', 1)[-1:][0].strip().lower()
             if ref.strip().split('.')[0].strip() == '$model':
-                ref_col_name = ref.strip().split('.')[1].strip()
                 ref_model = model_cols[col_name].related_model
             else:
-                ref_col_name = ref.rsplit('.', 1)[-1:][0].strip().lower()
-                ref_model = ref.rsplit('.', 2)[-2:][0].strip().lower() if len(ref.rsplit('.', 2)[-2:]) > 1 else None
-                if ref_model:
-                    ref_model = [m for m in django.apps.apps.get_models() if
-                         m._meta.model_name == ref_model.rsplit('.', 1)[-1:][0].lower()] if ref_model else None
+                # TODO: HG: Ideally we don't need this unless we provide functionality where sheet_column_name is different from data_field
+                #           but in that case too, we need to be able to map column_name to field_name which we don't have right now.
+                ref_model_str = ref.rsplit('.', 2)[-2:][0].strip().lower() if len(ref.rsplit('.', 2)[-2:]) > 1 else None
+                tmp_model = [m for m in django.apps.apps.get_models() if
+                     m._meta.model_name.lower() == ref_model_str][0] if ref_model_str else None
+
+
+                ref_model = tmp_model if tmp_model == model_cols[col_name].related_model else None
 
             if ref_model:
                 ref_field = None
