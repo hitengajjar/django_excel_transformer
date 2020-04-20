@@ -116,18 +116,18 @@ class XlsWriter(object):
                 return None
 
     @staticmethod
-    def _style_column(ws: Worksheet, column_letter: str, column_details: ColFormat):
+    def _style_column(ws: Worksheet, column_letter: str, formatting):
         """
         Wrap all cells in column
         :param ws:
         :param column_letter:
-        :param column_details:
+        :param formatting:
         :return:
         """
-        ws.column_dimensions[column_letter].width = column_details.width
-        if column_details.comment is not None:
-            ws["${0}$1".format(column_letter)].comment = column_details.comment
-        cr = column_details.reference
+        ws.column_dimensions[column_letter].width = formatting.width
+        if formatting.comment:
+            ws["${0}$1".format(column_letter)].comment = formatting.comment
+        cr = formatting.reference
         if cr is not None:
             dv = DataValidation(type="list",
                                 formula1="{0}!{1}:{2}".format(quote_sheetname(cr.sheet_name),
@@ -137,8 +137,8 @@ class XlsWriter(object):
             ws.add_data_validation(dv)
         col_metadata = dict(startcell="${0}$2".format(column_letter),
                             endcell="${0}${1}".format(column_letter, len(ws[column_letter])))
-        column_details.update_sheet_metadata(col_metadata)
-        if column_details.wrap is True:
+        formatting.update_sheet_metadata(col_metadata)
+        if formatting.wrap is True:
             for cell in ws[column_letter]:
                 cell.alignment = Alignment(wrapText=True)
 
@@ -181,7 +181,6 @@ class Exporter(object):
 
 
     def export_data(self, mapper):
-
         def get_table_formatter(sheet, defaults) -> Box:
             t_fmt = TableFormat(sheet.sheet_name, sheet_pos=1)
             t_style = Box(default_box=True)

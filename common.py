@@ -1,5 +1,7 @@
 import django
 from box import Box
+from collections.abc import KeysView
+# from orderedset import OrderedSet
 
 
 class DBDataMistmatchError(Exception):
@@ -59,34 +61,25 @@ def nm(class_name) -> str:
         return class_name.__name__
 
 
-def lower_list(datalist):
-    """
-    Converts list string value(s) to lowercase after striping leading and trailing spaces.
-    """
-    lowercaselst = []
-    for v in datalist:
-        lowercaselst.append(v.strip().lower() if isinstance(v, str) else v)
-    return lowercaselst
-
-
 def lower(data):
     """
-    Coverts input data string value(s) to lowercase after striping leading and trailing spaces.
+    Utility function. Coverts input data string value(s) to lowercase after striping leading and trailing spaces.
     """
     if isinstance(data, dict):
         lowerdatadict = Box(default_box=True)
         for k, v in data.items():
-            if isinstance(v, dict):
-                lowerdatadict[k] = lower(v)
-            elif isinstance(v, dict):
-                lowerdatadict[k] = lower_list(v)
-            elif isinstance(v, str):
-                lowerdatadict[k] = v.strip().lower()
-            else:
-                lowerdatadict[k] = v
+            lowerdatadict[k] = lower(v)
         return lowerdatadict
     elif isinstance(data, list):
-        return lower_list(data)
+        lowercaselst = []
+        for v in data:
+            lowercaselst.append(lower(v))
+        return lowercaselst
+    elif isinstance(data, KeysView) or  isinstance(data, set):
+        lowercaseset = set()
+        for v in data:
+            lowercaseset.add(lower(v))
+        return lowercaseset
     elif isinstance(data, str):
         return data.strip().lower()
     else:
@@ -120,7 +113,7 @@ def get_ref_model_fields(model_name: str, col_name: str, ref: str) -> ():
                 #           but in that case too, we need to be able to map column_name to field_name which we don't have right now.
                 ref_model_str = ref.rsplit('.', 2)[-2:][0].strip().lower() if len(ref.rsplit('.', 2)[-2:]) > 1 else None
                 tmp_model = [m for m in django.apps.apps.get_models() if
-                     m._meta.model_name.lower() == ref_model_str][0] if ref_model_str else None
+                             m._meta.model_name.lower() == ref_model_str][0] if ref_model_str else None
 
 
                 ref_model = tmp_model if tmp_model == model_cols[col_name].related_model else None

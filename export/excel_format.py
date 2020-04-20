@@ -1,3 +1,6 @@
+from openpyxl.worksheet.properties import WorksheetProperties
+
+
 class ColRef(object):
     START_CELL = 'startcell'
     END_CELL = 'endcell'
