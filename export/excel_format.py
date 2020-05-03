@@ -1,3 +1,5 @@
+import openpyxl
+from box import Box
 from openpyxl.worksheet.properties import WorksheetProperties
 
 
@@ -39,6 +41,24 @@ class ColFormat(object):
     @classmethod
     def get_defaultcolumn(cls, column: str):
         return cls(column, width=ColFormat.DEFAULT_WIDTH, wrap=ColFormat.DEFAULT_WRAP)
+
+
+        def get_column_formatter(data, defaults):
+            c_style = Box(default_box=True)
+            c_style.chars_wrap = 20
+            c_style.comment = Box(default_box=True,
+                                  text='', author='admin@github.com', height_len=110, width_len=230)
+
+            def get_tbl_style(c_style: Box, data):
+                # Helper function to fill up table style
+                if 'chars_wrap' in data:
+                    c_style.chars_wrap = data.chars_wrap
+                if 'comment' in data:
+                    comment_keys = data.comment.keys() & set(
+                        ['text', 'author', 'height_len', 'width_len'])
+                    for f in comment_keys:
+                        c_style.comment[f] = comment_keys[f]
+                return c_style
 
 
 class TableFormat(object):
@@ -142,3 +162,36 @@ class TableFormat(object):
     def set_tablename(self, tablename):
         self.table_nm = tablename
         pass
+
+    def get_tbl_style(t_style: Box, fmt):
+        # Helper function to fill up table style
+        t_tbl_style = {}
+        if 'tab_color' in fmt:
+            t_style.tabColor = fmt.tab_color
+        if 'read_only' in fmt:
+            t_style.read_only = False if fmt['read_only'] == 'false' else True
+        if 'table_style' in fmt:
+            tbl_style = fmt.table_style
+            tbl_style_keys = tbl_style.keys() & set(
+                ['name', 'show_first_column', 'show_last_column', 'show_row_stripes', 'show_column_stripes'])
+            for f in tbl_style_keys:
+                t_tbl_style[f] = tbl_style[f]
+
+            t_style.table_style = t_tbl_style
+        return t_style
+
+        if defaults and 'formatting' in defaults:
+            t_style = get_tbl_style(t_style, defaults.formatting)
+        if sheet and 'formatting' in sheet:
+            t_style = get_tbl_style(t_style, sheet.formatting)
+        return t_style
+
+    def get_table_formatter(sheet, defaults) -> Box:
+        t_fmt = TableFormat(sheet.sheet_name, sheet_pos=1)
+        t_style = Box(default_box=True)
+        t_style.tabColor = None
+        t_style.read_only = True
+        t_style.table_style = openpyxl.worksheet.table.TableStyleInfo(name='TableStyleMedium2',
+                                                                      showRowStripes=True,
+                                                                      showLastColumn=False)
+

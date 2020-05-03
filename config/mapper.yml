@@ -1,0 +1,211 @@
+---
+
+defaults: # default values picked from here.
+  formatting:
+    read_only: false
+    table_style:
+      name: "TableStyleMedium"  # Excel built-in style names. TableStyleLight1 - TableStyleLight21, TableStyleMedium1 - TableStyleMedium28, TableStyleDark1 - TableStyleDark11
+      show_first_column: false  # if set to true, excel will show first column with bold font
+      show_last_column: false  # if set to true, excel will show last column with bold font
+      show_row_stripes: true  # if set to true, excel will show alternate rows with light colored background
+      show_column_stripes: true  # if set to true, excel will show alternate columns with light colored background
+    data:  # Applicable at column level
+      chars_wrap: 20
+      comment:
+        text: ""  # comment will be ignored if text == ""
+        author: "Admin@github.com"  # Excel shows author name along with comment. This field can be used to provide author name
+        height_len: 110
+        width_len: 230
+
+datasets:
+  comp_version:
+    model_name: "panopticum.models.ComponentVersionModel"
+    index_key: ["component", "version"]
+    data:  # exporter will export columns in order they appear here.
+      - columns: ["component"]
+        references: ["$model.Name"]
+      - columns: ["version"]
+      - columns: ["dev_*"]
+        references: ["$model.name"]
+      - columns: ["dev_raml", "dev_repo", "dev_public_repo", "dev_jira_component", "dev_build_jenkins_job",
+                  "dev_docs", "dev_public_docs", "dev_commit_link", "dev_api_is_public"]
+      - columns: ["owner_*"]
+        references: ["$model.email"]
+
+  component:
+    model_name: "panopticum.models.ComponentModel"
+    index_key: ["name"]
+    data:
+      - columns: ["name", "description", "life_status"]
+      - columns: ["runtime_type", "data_privacy_class", "category", "subcategory", "vendor"]
+        references: ["$model.name"]
+
+  component_category:
+    model_name: "panopticum.models.ComponentCategoryModel"
+    index_key: ["name"]
+    data:
+      - columns: ["*"]
+
+  component_subcategory:
+    model_name: "panopticum.models.ComponentSubcategoryModel"
+    index_key: ["category", "name"]
+    data:
+      - columns: ["category"]
+        references: ["$model.name"]
+      - columns: ["name", "description"]
+
+  component_dependency:
+    model_name: "panopticum.models.ComponentDependencyModel"
+    index_key: ["version", "component"]
+    data:
+      - columns: ["version"]
+        references: ["$model.component", "$model.version"]
+      - columns: ["component"]
+        references: ["$model.name"]
+      - columns: ["type", "notes"]
+
+  component_deployment:
+    model_name: "panopticum.models.ComponentDeploymentModel"
+    index_key: ["component_version", "location_class", "product_version", "environment"]
+    data:
+      - columns: ["name", "service_name", "binary_name"]
+      - columns: ["component_version"]
+        references: ["$model.component", "$model.version"]
+      - columns: ["location_class", "product_version", "environment", "open_ports"]
+        references: ["$model.name"]
+      - columns: ["open_ports", "notes"]
+
+  product_version:
+    model_name: "panopticum.models.ProductVersionModel"
+    index_key: ["name"]
+    data:
+      - columns: ["shortname", "name", "order"]
+      - columns: ["family"]
+        references: ["$model.name"]
+
+  language:
+    model_name: "panopticum.models.ProgrammingLanguageModel"
+    index_key: ["name"]
+    data:
+      - columns: ["name"]
+
+  _multi_tables:  # Special case, should be used with special sheet_name
+    model_names: ["panopticum.models.FrameworkModel","panopticum.models.ComponentDataPrivacyClassModel",
+                  "panopticum.models.ComponentRuntimeTypeModel","panopticum.models.CountryModel","panopticum.models.DatabaseVendorModel",
+                  "panopticum.models.DeploymentEnvironmentModel", "panopticum.models.DeploymentLocationClassModel",
+                  "panopticum.models.LoggerModel", "panopticum.models.ProductFamilyModel", "panopticum.models.SoftwareVendorModel",
+                  "panopticum.models.TCPPortModel"]
+    index_key: ["name"]
+    data:
+      - columns: ["*"]
+
+filters:
+  latest_record:
+    LATEST:  # All latest record - supported with number/datetime comparable types e.g. int, float, datetime
+      columns: ["order"]
+    ASC_SORT:
+      columns: ["component"]
+  wo_latest_record:
+    ALL_WO_LATEST:  # All records but no latest record - supported with number/datetime comparable types e.g. int, float, datetime
+      columns: ["order"]
+    DESC_SORT:
+      columns: ["component"]
+
+sheets:
+  - sheet_name: "CompVersion_latest"  # Will append numeric number if sheet already exists in excel
+    view: latest_record  # Acts as data dataview
+    dataset: comp_version  # all columns defined in dataset is exported.
+    formatting:
+      tab_color: "00008B"
+      data:
+        - columns: ["dev_*"]
+          comment:
+            text: "Multiple entries, each on separate line and starts with '* '"
+        - columns: ["dev_raml", "dev_repo", "dev_public_repo", "dev_jira_component", "dev_build_jenkins_job",
+                    "dev_docs", "dev_public_docs", "dev_commit_link", "dev_api_is_public"]
+          chars_wrap: 35
+          comment:
+            text: "Multiple entries separated by space"
+        - columns: ["owner_*"]
+          read_only: true               # only export
+
+  - sheet_name: "CompVersion_wo_latest"
+    dataset: comp_version
+    view: wo_latest_record  # Acts as data dataview
+    formatting:
+      tab_color: "00008B"
+      data:
+        - columns: ["dev_*"]
+          comment:
+            text: "Multiple entries, each on separate line"
+        - columns: ["dev_raml", "dev_repo", "dev_public_repo", "dev_jira_component", "dev_build_jenkins_job",
+                    "dev_docs", "dev_public_docs", "dev_commit_link", "dev_api_is_public"]
+          chars_wrap: 35
+          comment:
+            text: "Multiple entries separated by space"
+        - columns: ["owner_*"]
+          read_only: true               # only export
+
+  - sheet_name: "Components"
+    dataset: component
+    formatting:
+      tab_color: "00008B"
+      data:
+        - columns: ["description"]
+          chars_wrap: 50
+      # - columns: ["runtime_type", "data_privacy_class", "category", "subcategory", "vendor"]
+
+  - sheet_name: "CompCategories"
+    dataset: component_category
+    formatting:
+      data:
+        - columns: ["description"]
+          chars_wrap: 50
+
+  - sheet_name: "CompSubCategories"
+    dataset: component_subcategory
+    formatting:
+      data:
+        - columns: ["name", "category"]
+          chars_wrap: 20
+        - columns: ["description"]
+          chars_wrap: 50
+
+  - sheet_name: "Languages"
+    dataset: language
+
+  - sheet_name: "CompDependency"
+    dataset: component_dependency
+    formatting:
+      read_only: true  # sheet won't be editable
+      data:
+        - columns: ["version"]
+          chars_wrap: 30
+        - columns: ["notes"]
+          chars_wrap: 50
+
+  - sheet_name: "CompDeployment"
+    dataset: component_deployment
+    formatting:
+      read_only: true
+      data:
+        - columns: ["open_ports"] # additional properties for open_port
+          comment:
+            text: "Allows multiple entries in a cell. Prefix each entry with '* ' and end with end of line. Each entry should match `name` in TCPPortModel. e.g. * HTTP-8080"
+          read_only: true
+        - columns: ["notes"]
+          chars_wrap: 50
+
+  - sheet_name: "ProdVersion"
+    dataset: product_version
+    formatting:
+      read_only: true
+      data:
+        - columns: ["family"]
+          chars_wrap: 30
+
+  - sheet_name: "*" # use model_name as sheet_name
+    dataset: _multi_tables
+    formatting:
+      read_only: true
+
