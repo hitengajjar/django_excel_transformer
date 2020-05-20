@@ -9,7 +9,7 @@ from itertools import chain
 # import attr
 from box import Box, BoxList
 
-from ..common import get_attr_from_dict, lower, get_model_fields, val, get_model
+from ..common import get_attr_from_dict, lower, get_model_fields, val, get_model, defval_dict
 
 
 ## TODO: HG: Documentation part
@@ -40,44 +40,9 @@ def get_defaults(defaults):
         f.data.comment.author = val(config_f.data.comment.author, 'admin@github.com')
         f.data.comment.height_len = val(config_f.data.comment.height_len, 110)
         f.data.comment.width_len = val(config_f.data.comment.width_len, 230)
-    default = Box(default_box=True)
-    default.formatting = f
-    return default
-
-
-# Reference = namedtuple('Reference', ['model', 'field'])
-# ColFormatting = namedtuple('ColFormatting', ['comment', 'chars_wrap'])
-# # c = ColFormatting(comment=Box(text='comment', author='author', height_len=100, width_len=230), chars_wrap=20)
-# Column = namedtuple('Column', ['name', 'formatting', 'references'])
-# # c = Column(name='dev_orm', formatting=ColFormatting, references=OrderedDict(component=dict(model='Component',
-# # field='component')))
-# Sheet = namedtuple('Sheet', ['name', 'model', 'index_key', 'formatting', 'filters', 'columns'])
-# s = Sheet('sheet_name', dict(read_only=True), dict(ascsort=['component', 'order'], latest=['order']), [Column(...),
-# Column(...)])
-
-
-# TODO: HG: Improve design by having regular classes for Sheet, Dataset, Formatting
-# @attr.s
-# class Reference:
-#     model_name = attr.ib()
-#     field_nm = attr.ib()
-#
-# @attr.s
-# class ColFormatting:
-#     column = attr.ib()
-#     references = attr.ib(factory=list)
-#
-# @attr.s
-# class TableFormatting:
-#     tab_color = attr.ib()
-#
-# @attr.s
-# class Sheet(object):
-#     sheet_name = attr.ib()
-#     model_name = attr.ib()
-#     index_key = attr.ib()
-#     formatting = attr.ib(factory=TableFormatting)
-#
+    defaults._box_config['default_box'] = True
+    defaults.formatting = f
+    return defaults
 
 
 class Parser(object):
@@ -114,12 +79,12 @@ class Parser(object):
         #
         def error(label, field, msg, **entries):
             """
-            label - can be any thing like sheet_name, file_name, or any random string
+            label - can be any thing like name, file_name, or any random string
             field - field referenced within sheet
             msg - printable message
             entries - additional name-value pairs
             """
-            vals = val(self._errors[label], [])
+            vals = defval_dict(self._errors, label, [])
             vals.append(Box(default_box=True, sheet_name=label, field=field, msg=msg, **entries))
             self._errors[label] = vals
 
@@ -130,25 +95,18 @@ class Parser(object):
                 formatting = default
             else:
                 formatting = Box(default_box=True)
-
-                formatting.read_only = ow.read_only if ow.read_only else default.read_only
-                formatting.tab_color = ow.tab_color if ow.tab_color else default.tab_color
-
-                formatting.table_style.name = ow.table_style.name \
-                    if ow.table_style.name else default.table_style.name
-                formatting.table_style.show_first_column = ow.table_style.show_first_column \
-                    if ow.table_style.show_first_column else default.table_style.show_first_column
-                formatting.table_style.show_last_column = ow.table_style.show_last_column \
-                    if ow.table_style.show_last_column else default.table_style.show_last_column
-                formatting.table_style.show_row_stripes = ow.table_style.show_row_stripes \
-                    if ow.table_style.show_row_stripes else default.table_style.show_row_stripes
-                formatting.table_style.show_column_stripes = ow.table_style.show_column_stripes \
-                    if ow.table_style.show_column_stripes else default.table_style.show_column_stripes
+                formatting.read_only = defval_dict(ow, 'read_only', default.read_only)
+                formatting.tab_color = defval_dict(ow, 'tab_color', default.tab_color)
+                formatting.table_style.name = defval_dict(ow.table_style, 'name', default.table_style.name)
+                formatting.table_style.show_first_column = defval_dict(ow.table_style, 'show_first_column', default.table_style.show_first_column)
+                formatting.table_style.show_last_column = defval_dict(ow.table_style, 'show_last_column', default.table_style.show_last_column)
+                formatting.table_style.show_row_stripes = defval_dict(ow.table_style, 'show_row_stripes', default.table_style.show_row_stripes)
+                formatting.table_style.show_column_stripes = defval_dict(ow.table_style, 'show_column_stripes', default.table_style.show_column_stripes)
 
             return formatting
 
         def _get_col_formatting(field, data_formatting) -> Box:
-            """returns formatting for field if exists else None"""
+            """returns cf for field if exists else None"""
             default = self.defaults.formatting.data
             col_format = Box(default_box=True, chars_wrap=default.chars_wrap, read_only=False)
             # cols = list(chain(*[cols for cols in sheet_formatting.data]))
@@ -163,17 +121,12 @@ class Parser(object):
                             if 'read_only' in data_cols:
                                 col_format.read_only = data_cols.read_only
                             if 'comment' in data_cols:
-                                col_format.comment.text = data_cols.comment.text \
-                                    if 'text' in data_cols.comment else default.comment.text
-                                col_format.comment.author = data_cols.comment.author \
-                                    if 'author' in data_cols.comment else default.comment.author
-                                col_format.comment.height_len = data_cols.comment.height_len \
-                                    if 'height_len' in data_cols.comment else default.comment.height_len
-                                col_format.comment.width_len = data_cols.comment.width_len \
-                                    if 'width_len' in data_cols.comment else default.comment.width_len
-                        # we don't break since we allow overwriting - so same field can have formatting multiple
+                                col_format.comment.text = defval_dict(data_cols.comment, 'text', default.comment.text)
+                                col_format.comment.author = defval_dict(data_cols.comment, 'author', default.comment.author)
+                                col_format.comment.height_len = defval_dict(data_cols.comment, 'height_len', default.comment.height_len)
+                                col_format.comment.width_len = defval_dict(data_cols.comment, 'width_len', default.comment.width_len)
+                        # we don't break since we allow overwriting - so same field can have cf multiple
                         # times once with * and then explicit value
-
             return col_format  # nothing found, return default
 
         def get_references(model_name, field, references):
@@ -185,9 +138,8 @@ class Parser(object):
             ref_data = []
             model = get_model(model_name)
             fields = get_model_fields(model)
-            django_field_nm = [tmp for tmp in fields if
-                               lower(field) == lower(
-                                   tmp)]  # need exact field name for de-referencing within Django model
+            django_field_nm = [tmp for tmp in fields if lower(field) == lower(tmp)]
+                                            # need exact field name for de-referencing within Django model
             if not django_field_nm:
                 raise AttributeError("model [%s] doesn't have field [%s]" % (model_name, django_field_nm))
 
@@ -203,6 +155,7 @@ class Parser(object):
                 ref_field = ref.rsplit('.', 1)[-1:][0]
                 if ref.strip().split('.')[0].strip() == '$model':
                     ref_model = model._meta.get_field(django_field_nm).related_model
+                    ref_model_str = ref_model._meta.model_name
                 else:
                     # TODO: HG: Ideally we don't need this unless we provide functionality where sheet_column_name is
                     #  different from data_field but in that case too, we need to be able to map column_name to
@@ -212,7 +165,7 @@ class Parser(object):
                     ref_model = get_model(ref_model_str)
                     if ref_model != model._meta.get_field(django_field_nm).related_model:
                         raise ValueError("Invalid model [%s] expected [%s]" %
-                                         (ref_model_str, model._meta.get_field(django_field_nm).related_model.__name__))
+                                         (ref_model_str, model._meta.get_field(django_field_nm).related_model))
                 fields = [tmp for tmp in get_model_fields(ref_model).keys() if
                           lower(ref_field) == lower(
                               tmp)]  # need exact field name for de-referencing within Django model
@@ -222,13 +175,13 @@ class Parser(object):
                         ref_field, django_field_nm, model_name))
                 if ref_field != 'pk':
                     ref_field = fields[0]
-                ref_data.append((ref_model, ref_field))
+                ref_data.append((ref_model_str, ref_field))
             return ref_data
 
         def _parse_dataset(dataset, model_name, sheet_name, ds_field) -> Box:
             # TODO: HG: Don't do inplace replace. Create separate copy of sheets, datasets, filters, default
 
-            def get_idx_col_refs(ds) -> tuple():
+            def get_idx_col_refs(ds):
                 """
                 returns tuple (index_columns_list, [tuple(arr_idx, column)], [tuple(arr_idx, [references])])
                 """
@@ -265,7 +218,7 @@ class Parser(object):
 
                 data = dataset.data
                 dataset.data = {}
-                graph_edges = dataset.dependent_models if 'dependent_models' in dataset else BoxList()
+                graph_edges = defval_dict(dataset, 'dependent_models', BoxList())
                 for idx, datalist in enumerate(data):
                     if 'columns' not in datalist:
                         error(sheet_name, '%s.data[%d]' % (ds_field, idx),
@@ -273,7 +226,7 @@ class Parser(object):
                         continue
 
                     columns = datalist['columns']
-                    references = datalist['references'] if 'references' in datalist else []
+                    references = defval_dict(datalist, 'references', [])
                     for col in columns:
                         logging.debug("     column [%s]" % col)
                         fields = [k for k in model_fields.keys() if col == '*' or re.findall('^' + col, k)]
@@ -297,9 +250,9 @@ class Parser(object):
 
                             try:
                                 dataset.data[f].references = get_references(model_name, f, references)
-                                graph_edges.extend([ref_model.__name__
+                                graph_edges.extend([ref_model
                                                     for (ref_model, _) in dataset.data[f].references
-                                                    if ref_model.__name__ not in graph_edges])
+                                                    if ref_model not in graph_edges])
                             except AttributeError as ae:
                                 if not (col == '*' or col[-1:] == '*'):
                                     error(sheet_name, '%s.data[%d].columns[%s]' % (ds_field, idx, col), '%s' % ae)
@@ -349,7 +302,7 @@ class Parser(object):
             elif isinstance(value, dict):
                 for k, v in value.items():
                     _validate_type(label, k, v, fqfn)
-            elif isinstance(value, list):  # TODO: HG: Will not work for formatting.data[n].columns
+            elif isinstance(value, list):  # TODO: HG: Will not work for cf.data[n].columns
                 for f in value:
                     _validate_type(label, '', f, fqfn)
             elif field not in field_types:  # TODO: HG: use supported_fields here. # Challenge with lists -- need
@@ -360,7 +313,7 @@ class Parser(object):
         if self.defaults:
             _validate_type('mapper.yml', 'defaults', self.defaults, 'mapper')
 
-        sheet_model_map = Box(default_box=True, default_box_attr=BoxList)  # model_name -> sheet_name
+        sheet_model_map = Box(default_box=True, default_box_attr=BoxList)  # model_name -> name
 
         # Validate sheets along with referenced datasets
         for sheet_name, sheet in self._sheets.items():
@@ -379,7 +332,7 @@ class Parser(object):
                 # Validate dataset existence
                 if not sheet.dataset or sheet.dataset not in self._datasets:
                     error(sheet_name, '%s.dataset' % base_field, 'missing dataset. check mapper.datasets',
-                          dataset=sheet.dataset if 'dataset' in sheet else "")
+                          dataset=defval_dict(sheet, 'dataset', ""))
                 else:  # Now Validate dataset entry
                     logging.debug('Sheet with dataset [%s]' % sheet.dataset)
                     ds = self._datasets[sheet.dataset]
@@ -387,8 +340,8 @@ class Parser(object):
 
                     _validate_type(label=sheet_name, field=sheet.dataset, value=ds, parent_fields='mapper.datasets')
 
-                    models = ds.model_names if 'model_names' in ds else [ds.model_name]
-                    # tmp_sheet = self.sheets.pop(sheet_name)
+                    models = defval_dict(ds, 'model_names', [ds.model_name])
+                    # tmp_sheet = self.sheets.pop(name)
                     for model_name in models:
                         model_name = model_name.rsplit('.', 1)[-1:][0]
                         dup_sheet = copy.deepcopy(
@@ -403,19 +356,19 @@ class Parser(object):
                             dup_sheet.sheet_name)  # We can have multiple sheets for same model with different filters.
 
                         # if ['model_names', 'model_name'] not in ds:  TODO: HG: check if none of these exists and flag error
-                        #     error(sheet_name, '%s' % ds_field,
+                        #     error(name, '%s' % ds_field,
                         #           'missing \'model_name\' entry. Check mapper.datasets. '
-                        #           'Note: \'model_names\' only supported with sheet_name \'*\'')
+                        #           'Note: \'model_names\' only supported with name \'*\'')
                         datakeys = [k for k in dup_sheet.dataset.data.keys()]
                         sheet_formatting = dup_sheet.formatting.copy()
                         for f in datakeys:
                             dup_sheet.dataset.data[f].formatting = _get_col_formatting(f, sheet_formatting.data)
                         if 'data' in dup_sheet.formatting.data:
                             del dup_sheet.formatting.data
+                        # Validate and update table formatting
+                        _validate_type(sheet_name, 'formatting', dup_sheet.formatting, 'mapper.sheets')
+                        dup_sheet.formatting = _get_tbl_formatting(dup_sheet.formatting)
 
-                # Validate and update formatting field types
-                _validate_type(sheet_name, 'formatting', sheet.formatting, 'mapper.sheets')
-                sheet.formatting = _get_tbl_formatting(sheet.formatting)
             except Exception as e:
                 logging.error('Sheet [%s], exception: [%s]' % (sheet_name, e))
                 print(traceback.format_exc())
@@ -431,11 +384,11 @@ class Parser(object):
         # TODO: Test cases -
         #   * missing filters -- (a) referenced -- error case, (b) none referenced in sheets
         #   * missing datasets --- (a) referenced in sheets -- error case
-        #   * undefined formatting fields -- error case
+        #   * undefined cf fields -- error case
         #   * 'index' fields
         #       - provide entry that doesn't exists in model
         #       - entry that exists in model but not defined in mapper columns field.
-        #   * invalid formatting fields
+        #   * invalid cf fields
         #   * columns -
         #       - configure field more than 1 times using either by defining it part of 'fieldpart_*', '*', or explicitly configure for 2 times.
         #           * latest configuration should take effect.
@@ -449,7 +402,7 @@ class Parser(object):
         """
 
         if not export_sequence:
-            return self.parsed_sheets.keys()
+            return list(self.parsed_sheets.keys())
 
         visited = set()
         graph = lower(self.parsed_sheets.keys())
@@ -475,15 +428,15 @@ class Parser(object):
         return dfs_nodes
 
     def get_sheet(self, sheet_name: str, formatting=True) -> Box:
-        """Sheet object if sheet_name exists else None"""
+        """Sheet object if name exists else None"""
         if not self._status:
             raise Exception('Ensure %s is validated' % self._file_name)
 
         if not formatting:
-            # TODO: HG: Remove formatting and send the data. Design update - Formatting separate than data
+            # TODO: HG: Remove cf and send the data. Design update - Formatting separate than data
             pass
 
-        return self.parsed_sheets[sheet_name] if sheet_name in self.parsed_sheets else None
+        return defval_dict(self.parsed_sheets, sheet_name, None)
         # TODO: HG: We have an issue to fix when we use filter on sample table and have multiple sheets exported and dependent sheet doesn't know how to link excel validation
         # e.g. compversion_latest and compversion_wo_latest -> use model 'componentversionmodel'
         #       compdependency depends upon model 'componentversionmodel' hence it needs to know which sheet to refer.

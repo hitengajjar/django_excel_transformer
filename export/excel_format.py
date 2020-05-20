@@ -1,197 +1,176 @@
+import logging
+
 import openpyxl
 from box import Box
+from openpyxl.styles import Alignment
 from openpyxl.worksheet.properties import WorksheetProperties
+from enum import Enum
+import attr
+from openpyxl.worksheet.table import TableStyleInfo
+
+from ..common import lower, val, defval_dict, Registry
 
 
+class FormatType(Enum):
+    TABLE = 1
+    COLUMN = 2
+
+@attr.s
+class Formatter:
+    name = attr.ib(validator=attr.validators.instance_of(str))
+    type = attr.ib(validator=attr.validators.instance_of(FormatType))
+    formatters = attr.ib(validator=attr.validators.instance_of(Box))
+
+    @staticmethod
+    def default(class_name, name):
+        return class_name.from_dict(name)
+
+    @classmethod
+    def from_dict(cls, name: str, data: Box):
+        raise PermissionError("Cannot create object of %s" % cls)
+
+@attr.s
 class ColRef(object):
     START_CELL = 'startcell'
     END_CELL = 'endcell'
+    name = attr.ib(validator=attr.validators.instance_of(str))
+    startcell = attr.ib(validator=attr.validators.instance_of(str))
+    endcell = attr.ib(validator=attr.validators.instance_of(str))
 
-    def __init__(self, tablename: str, column_settings):
-        tablename.strip()
-        self.sheet_name = tablename  # table.get_tablename()
-        self.startcell = column_settings.get_sheet_metadata()[ColRef.START_CELL]
-        self.endcell = column_settings.get_sheet_metadata()[ColRef.END_CELL]
-
-
-class ColFormat(object):
-    DEFAULT_WIDTH = 10
-    DEFAULT_WRAP = True
-
-    def __init__(self, column_nm: str, **args):
-        argkeys = args.keys()
-        self.column_nm = column_nm
-        self.width = args["width"] if "width" in argkeys else ColFormat.DEFAULT_WIDTH
-        self.wrap = args["wrap"] if "wrap" in argkeys else ColFormat.DEFAULT_WRAP
-        self.comment = args["comment"] if "comment" in argkeys else None
-        self.reference: ColRef = args[
-            "reference"] if "reference" in argkeys else None
-        self.dataref: dict = args["sheet_metadata"] if "sheet_metadata" in argkeys else None
-        if self.dataref is None:
-            self.dataref = {ColRef.START_CELL: '$B$2', ColRef.END_CELL: '$B$2'}
-
-    def update_sheet_metadata(self, metadata: dict):
-        """ Helper function that holds references within sheet for this column
-        e.g. data starting cell, data ending cell etc"""
-        self.dataref = metadata
-
-    def get_sheet_metadata(self):
-        return self.dataref
+    @property
+    def sheet_name(self):
+        return self.name
 
     @classmethod
-    def get_defaultcolumn(cls, column: str):
-        return cls(column, width=ColFormat.DEFAULT_WIDTH, wrap=ColFormat.DEFAULT_WRAP)
+    def from_registry(cls, ref_data):
+        """
+        Receives ref_data as provided by Parser and will convert to ColRef type.
+        It needs to access Registry -> Ref sheet Exporter -> TableFormatter -> ColFormatter
+        :param ref_data: reference data if exists
+        :return: ColRef instance
+        """
+        # TODO: HG: See how we can fetch validation from common Registry and update excel_val?
+        if ref_data is None or len(ref_data) > 1:
+            logging.info("Received invalid ref_data [%s]. Excel expects only one sheet.column for datavalidation. Ignoring!" % (ref_data))
+            return None
+
+        es = Registry.exporter.get_sheet_by_model(ref_data[0][0])
+        if not es:
+            logging.error("Reference [%s] either doesn't exist or isn't exported yet, hence no reference available. Ignoring!" % (' - '.join(ref_data[0])))
+            return None
+
+        col_format = es.get_formatting().get_column(lower(ref_data[0][1]))
+        if not col_format:
+            logging.error("Reference [%s] is not available. Ignoring!" % (' - '.join(ref_data[0])))
+            return None
+
+        return ColRef(name=es.sheet_name,
+                      startcell="${0}$2".format(col_format.column_number),
+                      endcell="${0}${1}".format(col_format.column_number, len(es.dbdata)+1))
+
+@attr.s
+class ColFormat(Formatter):
+    DEFAULT_WIDTH = 10
+    DEFAULT_RO = False
+    DEFAULT_WRAP = True
+
+    column_number = attr.ib(validator=attr.validators.instance_of(str))
+
+    @classmethod
+    def from_dict(cls, name: str, col_data=None):
+        if col_data is None:
+            col_data = Box(default_box=True)
+        formatters = Box(default_box=True)
+        user_formatting_config = defval_dict(col_data, 'formatting', None)
+        formatters.width = defval_dict(user_formatting_config, "width", ColFormat.DEFAULT_WIDTH)
+        formatters.wrap = defval_dict(user_formatting_config, "wrap", ColFormat.DEFAULT_WRAP)
+        formatters.read_only = defval_dict(user_formatting_config, "read_only", ColFormat.DEFAULT_RO)
+        formatters.comment = defval_dict(user_formatting_config, "comment", None)
+        tmp_ref = defval_dict(col_data, "references", None)
+        formatters.reference = ColRef.from_registry(tmp_ref) if tmp_ref else None
+        return cls(name=name, type=FormatType.COLUMN, formatters=formatters,
+                  column_number=defval_dict(col_data, 'column_number', 'A'))
+
+    def update_excel_val(self, excel_val: dict):
+        self.excel_val = excel_val
 
 
-        def get_column_formatter(data, defaults):
-            c_style = Box(default_box=True)
-            c_style.chars_wrap = 20
-            c_style.comment = Box(default_box=True,
-                                  text='', author='admin@github.com', height_len=110, width_len=230)
+@attr.s
+class TableFormat(Formatter):
+    # various Worksheet properties https://openpyxl.readthedocs.io/en/stable/worksheet_properties.html
+    # TODO: HG: more data validation forumals to the sheet as explained at https://www.contextures.com/xlDataVal07.html
 
-            def get_tbl_style(c_style: Box, data):
-                # Helper function to fill up table style
-                if 'chars_wrap' in data:
-                    c_style.chars_wrap = data.chars_wrap
-                if 'comment' in data:
-                    comment_keys = data.comment.keys() & set(
-                        ['text', 'author', 'height_len', 'width_len'])
-                    for f in comment_keys:
-                        c_style.comment[f] = comment_keys[f]
-                return c_style
+    # DEFAULT_SHEET_POSITION = 1
+    DEFAULT_FREEZE_PANE = "A2"
+    DEFAULT_HORIZONTAL_ALIGNMENT = 'justify'
+    DEFAULT_WRAP_TEXT = True
+    DEFAULT_READONLY = False
 
+    columns = attr.ib(validator=attr.validators.instance_of(Box))  # Box of ColFormat
+    last_column_number = attr.ib(validator=attr.validators.instance_of(str))
+    sheet_position = attr.ib(default=None)
 
-class TableFormat(object):
-    """ Provides default formatting as well as provides registered class formatting
-    """
-    # Below COLUMN_* are assumed to be default columns each tables would have.
-    # Non-required columns wouldn't be used hence no harm.
-    COLUMN_ID = 'id'
-    COLUMN_NM = 'name'
-    COLUMN_DESC = 'description'
-    COLUMN_ORDER = 'order'
+    @classmethod
+    def from_dict(cls, name: str, t_fmting=None, c_fmting=None):
+        if t_fmting is None:
+            t_fmting = Box(default_box=True)
 
-    # TODO: HG:
-    ''' a
-        1. Check how we can use various Worksheet properties
-            # https://openpyxl.readthedocs.io/en/stable/worksheet_properties.html
-            >>> wsprops = ws.sheet_properties
-            >>> wsprops.tabColor = "1072BA"
-            >>> wsprops.filterMode = False
-            >>> wsprops.pageSetUpPr = PageSetupProperties(fitToPage=True, autoPageBreaks=False)
-            >>> wsprops.outlinePr.summaryBelow = False
-            >>> wsprops.outlinePr.applyStyles = True
-            >>> wsprops.pageSetUpPr.autoPageBreaks = True
+        def get_tbl_style(ts_dict: Box) -> openpyxl.worksheet.table.TableStyleInfo:
+            # Helper function to fill up table style
+            if ts_dict:
+                t_tbl_style = TableStyleInfo(name='TableStyleMedium')  # Default name
+                key_mapper = {'name': 'name', 'show_first_column': 'showFirstColumn',
+                              'show_last_column': 'showLastColumn', 'show_row_stripes': 'showRowStripes',
+                              'show_column_stripes': 'showColumnStripes'}
+                for f in ts_dict.keys() & key_mapper.keys():
+                    setattr(t_tbl_style, key_mapper[f], ts_dict[f])
+                return t_tbl_style
+            else:
+                return None
 
-        2. We also need to add more data validation forumals to the sheet as explained at 
-        https://www.contextures.com/xlDataVal07.html - These validations will be part of ColumnFormatter or best 
-        would be ColumnReference '''
+        def get_sheet_alignment(align_dict: Box):
+            align = Alignment()
+            align.horizontal = defval_dict(align_dict, 'horizontal', TableFormat.DEFAULT_HORIZONTAL_ALIGNMENT)
+            align.wrap_text = defval_dict(align_dict, 'wrap_text', TableFormat.DEFAULT_WRAP_TEXT)
+            return align
 
-    def __init__(self, tablename: str, sheet_pos=None, sheet_properties: WorksheetProperties = None,
-                 table: dict = None):
-        tablename = tablename.strip()
-        self.table_nm = tablename
-        self.sheet_pos = sheet_pos  # Sheet positions are just indicative and not guaranteed.
-        self.sheet_properties = sheet_properties
-        if not table:
-            table = TableFormat.get_defaulttable()
-        else:
-            # Ensure all keys are in lower case without leading or trailing spaces.
-            table1 = {}
-            for (k, v) in table.items():
-                k = k.strip()
-                table1[k.lower()] = v
-            table = table1
-        self.table = table
+        formatters = Box(default_box=True)
+        formatters.table_style_info = get_tbl_style(defval_dict(t_fmting, "table_style", Box(default_box=True)))
+        formatters.locked = defval_dict(t_fmting, "read_only", TableFormat.DEFAULT_READONLY)
+        formatters.alignment = get_sheet_alignment(defval_dict(t_fmting, "alignment", Box(default_box=True)))
+        formatters.freeze_panes = defval_dict(t_fmting, "freeze_panes", TableFormat.DEFAULT_FREEZE_PANE)
 
-    def reg_col(self, column_settings: ColFormat = None):
+        sheet_props = WorksheetProperties()
+        for f in {"tabColor", "filterMode"} & t_fmting.keys():
+            setattr(sheet_props, f, t_fmting[f])
+        formatters.sheet_props = sheet_props
+
+        obj = cls(name=name, type=FormatType.TABLE, formatters=formatters,
+                  columns=Box(default_box=True), last_column_number='A',
+                  sheet_position=defval_dict(t_fmting, "position", None))
+        count = 1
+        column_number = 'A'
+        for col_nm, col_data in c_fmting.items():  # handle columns
+            column_number = chr(64 + count) if count <= 26 else \
+                chr(64 + int(count / 26)) + chr(64 + (int(count % 26) if int(count % 26) != 0 else 1))
+            col_data['column_number'] = column_number
+            count += 1
+            obj.reg_col(ColFormat.from_dict(col_nm, col_data))
+
+        obj.last_column_number = column_number
+
+        return obj
+
+    def reg_col(self, col_data: ColFormat = None):
         """ Registers column settings like width value, wrap enabled?, if data is referenced in other sheets
         Method chaining pattern used """
-        if column_settings is None:
-            raise ValueError("column_settings cannot be None")
-        column_nm = column_settings.column_nm.strip()
-        column_nm = column_nm.lower()
-        column_settings.column_nm = column_nm
-        self.table[column_nm] = column_settings
+        if col_data is None:
+            raise ValueError("column cannot be None")
+        self.columns[lower(col_data.name)] = col_data
         return self
 
-    def reg_cols_samesettings(self, col_names: list, column_setting: ColFormat):
-        """ Helper function to register multiple columns with same settings
-        Follows Method chaining pattern
-        """
-        for column_nm in col_names:
-            self.reg_col(ColFormat(column_nm, width=column_setting.width, wrap=column_setting.wrap))
-        return self
-
-    def reg_cols(self, columns: list):
-        """ Helper function to register multiple columns with same settings
-        Follows Method chaining pattern
-        """
-        for column in columns:
-            self.reg_col(column)
-        return self
-
-    def get_tablename(self):
-        return self.table_nm
-
-    def update_table(self, columns: [ColFormat]):
-        for column_setting in columns:
-            column_nm = column_setting.get_columnname()
-            column_nm = column_nm.strip()
-            column_setting.column_nm = column_nm.lower()
-            self.table[column_nm.lower()] = column_setting
-
-    def get_column(self, col: str) -> ColFormat:
-        """ Returns column formatting with registered values else returns default """
-        try:
-            col = col.strip()
-            return self.table[col.lower()]
-        except KeyError:
-            return ColFormat.get_defaultcolumn(col.lower())
-
-    @staticmethod
-    def get_defaulttable() -> dict:
-        """ Returns commonly available cell formatting """
-        return {
-            TableFormat.COLUMN_ID: ColFormat(TableFormat.COLUMN_ID),
-            TableFormat.COLUMN_NM: ColFormat(TableFormat.COLUMN_NM, width=20),
-            TableFormat.COLUMN_DESC: ColFormat(TableFormat.COLUMN_DESC, width=50),
-            TableFormat.COLUMN_ORDER: ColFormat(TableFormat.COLUMN_ORDER)
-        }
-
-    def set_tablename(self, tablename):
-        self.table_nm = tablename
-        pass
-
-    def get_tbl_style(t_style: Box, fmt):
-        # Helper function to fill up table style
-        t_tbl_style = {}
-        if 'tab_color' in fmt:
-            t_style.tabColor = fmt.tab_color
-        if 'read_only' in fmt:
-            t_style.read_only = False if fmt['read_only'] == 'false' else True
-        if 'table_style' in fmt:
-            tbl_style = fmt.table_style
-            tbl_style_keys = tbl_style.keys() & set(
-                ['name', 'show_first_column', 'show_last_column', 'show_row_stripes', 'show_column_stripes'])
-            for f in tbl_style_keys:
-                t_tbl_style[f] = tbl_style[f]
-
-            t_style.table_style = t_tbl_style
-        return t_style
-
-        if defaults and 'formatting' in defaults:
-            t_style = get_tbl_style(t_style, defaults.formatting)
-        if sheet and 'formatting' in sheet:
-            t_style = get_tbl_style(t_style, sheet.formatting)
-        return t_style
-
-    def get_table_formatter(sheet, defaults) -> Box:
-        t_fmt = TableFormat(sheet.sheet_name, sheet_pos=1)
-        t_style = Box(default_box=True)
-        t_style.tabColor = None
-        t_style.read_only = True
-        t_style.table_style = openpyxl.worksheet.table.TableStyleInfo(name='TableStyleMedium2',
-                                                                      showRowStripes=True,
-                                                                      showLastColumn=False)
-
+    def get_column(self, col_name: str, default=False) -> ColFormat:
+        """ Returns column cf with registered values else returns default """
+        return self.columns[lower(col_name)] if lower(col_name) in self.columns \
+            else Formatter.default(ColFormat, col_name) if default \
+            else None

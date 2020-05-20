@@ -1,14 +1,18 @@
 ---
 
 defaults: # default values picked from here.
-  formatting:
+  formatting:  # applicable only for exporting excel.
     read_only: false
+    hidden: false  # Sheet will be exported as hidden
     table_style:
       name: "TableStyleMedium"  # Excel built-in style names. TableStyleLight1 - TableStyleLight21, TableStyleMedium1 - TableStyleMedium28, TableStyleDark1 - TableStyleDark11
       show_first_column: false  # if set to true, excel will show first column with bold font
       show_last_column: false  # if set to true, excel will show last column with bold font
       show_row_stripes: true  # if set to true, excel will show alternate rows with light colored background
       show_column_stripes: true  # if set to true, excel will show alternate columns with light colored background
+    alignment:
+      wrap_text: true
+      horizontal: justify
     data:  # Applicable at column level
       chars_wrap: 20
       comment:
@@ -89,7 +93,7 @@ datasets:
     data:
       - columns: ["name"]
 
-  _multi_tables:  # Special case, should be used with special sheet_name
+  _multi_tables:  # Special case, should be used with special name
     model_names: ["panopticum.models.FrameworkModel","panopticum.models.ComponentDataPrivacyClassModel",
                   "panopticum.models.ComponentRuntimeTypeModel","panopticum.models.CountryModel","panopticum.models.DatabaseVendorModel",
                   "panopticum.models.DeploymentEnvironmentModel", "panopticum.models.DeploymentLocationClassModel",
@@ -204,7 +208,7 @@ sheets:
         - columns: ["family"]
           chars_wrap: 30
 
-  - sheet_name: "*" # use model_name as sheet_name
+  - sheet_name: "*" # use model_name as name
     dataset: _multi_tables
     formatting:
       read_only: true

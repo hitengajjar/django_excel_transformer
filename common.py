@@ -3,14 +3,20 @@ from box import Box
 from collections.abc import KeysView
 
 
-# from orderedset import OrderedSet
+class Registry:
+    """
+    Holds global resources
+    """
+    parser = None
+    exporter = None
+    importer = None
+    config = None
 
 
 class DBDataMistmatchError(Exception):
     """
     Exception that expresses whats wrong with DB data
     """
-
     def __init__(self, msg: str, **kwargs):
         self.table = kwargs["table"]
         self.filters = kwargs["filters"]
@@ -37,14 +43,10 @@ def fields_exists(datadict: {}, fields: []) -> (bool, []):
 
     return status, missing
 
+def defval_dict(dict, key, default):
+    return dict[key] if dict and key in dict else default
 
 def val(boxv1, v2):
-    """
-    Returns boxv1 if it exists else returns v2
-    :param boxv1:
-    :param v2:
-    :return:
-    """
     return v2 if not boxv1 or boxv1 == Box() else boxv1
 
 
