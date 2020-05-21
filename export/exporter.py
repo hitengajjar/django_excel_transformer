@@ -46,7 +46,7 @@ class ExportableSheet(object):
         # TODO: HG: it would be good idea to do _fetch_data() before and create ExportableSheet with actual data
         obj = cls(name=sheet_nm, model=model, data=data, filters=filters, columns=list(data.keys()),
                   formatting=TableFormat.from_dict(model._meta.model_name, formatting, data))
-        obj._fetch_data() # TODO: HG: Should be done before
+        obj._fetch_data()  # TODO: HG: Should be done before
         return obj
 
     def get_formatting(self):
@@ -84,22 +84,35 @@ class ExportableSheet(object):
             def get_ref_data(o, refs):
                 if not o:
                     return None
-                return ' - '.join([str(getattr(o, ref_f)) for _, ref_f in
-                                   refs])  # TODO: HG: for M2M we need to call o.all() and fetch values -- how to do this?
+                return ' - '.join([str(getattr(o, ref_f)) for ref_f in refs])
 
-            return [
-                (lambda o, f, v:
-                 getattr(o, f) if not v.references else get_ref_data(getattr(o, f), v.references))
-                (o, f, v) for (f, v) in data.items()]
+            vals = []
+            m2m_fields = [f.name for f in o._meta.many_to_many]
+            fkey_fields = [f.name for f in o._meta.fields if f.many_to_one]
+            for field, value in data.items():
+                if field in m2m_fields:
+                    # Check if references is provided by user if not then we use 'pk'
+                    ref_fields = ['pk'] if not value.references else [ref for _, ref in value.references]
+                    ref_objs = getattr(o, field).only(*ref_fields)
+                    # vals.append('\n'.join(['* ' + ' - '.join([str(getattr(ref_obj, ref_f)) for ref_f in ref_fields]) for ref_obj in ref_objs]))
+                    vals.append('\n'.join(['* ' + get_ref_data(ref_obj, ref_fields) for ref_obj in ref_objs]))
+                elif field in fkey_fields:
+                    ref_fields = ['pk'] if not value.references else [ref for _, ref in value.references]
+                    vals.append(get_ref_data(getattr(o, field), ref_fields))
+                else:
+                    vals.append(getattr(o, field))
 
+            return vals
+
+        logging.debug("Fetching data for [%s]" % self.name)
         self.dbdata = []
         dbobjs = None
         if self.filters:
             # TODO: HG: Check for filters and act accordingly.
             # self.model.objects.only(*self.data.keys()).order_by("-order")[0]
             pass
-        else:
-            dbobjs = self.model.objects.only(*self.data.keys())
+        #else:
+        dbobjs = self.model.objects.only(*self.data.keys())
 
         self.dbdata.extend([fetch_data(o, self.data) for o in dbobjs])
 

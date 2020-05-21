@@ -4,6 +4,7 @@ import openpyxl
 from box import Box
 from openpyxl.styles import Alignment
 from openpyxl.worksheet.properties import WorksheetProperties
+from openpyxl.comments import Comment
 from enum import Enum
 import attr
 from openpyxl.worksheet.table import TableStyleInfo
@@ -49,7 +50,6 @@ class ColRef(object):
         :param ref_data: reference data if exists
         :return: ColRef instance
         """
-        # TODO: HG: See how we can fetch validation from common Registry and update excel_val?
         if ref_data is None or len(ref_data) > 1:
             logging.info("Received invalid ref_data [%s]. Excel expects only one sheet.column for datavalidation. Ignoring!" % (ref_data))
             return None
@@ -82,10 +82,13 @@ class ColFormat(Formatter):
             col_data = Box(default_box=True)
         formatters = Box(default_box=True)
         user_formatting_config = defval_dict(col_data, 'formatting', None)
-        formatters.width = defval_dict(user_formatting_config, "width", ColFormat.DEFAULT_WIDTH)
+        formatters.width = defval_dict(user_formatting_config, "chars_wrap", ColFormat.DEFAULT_WIDTH)
         formatters.wrap = defval_dict(user_formatting_config, "wrap", ColFormat.DEFAULT_WRAP)
         formatters.read_only = defval_dict(user_formatting_config, "read_only", ColFormat.DEFAULT_RO)
-        formatters.comment = defval_dict(user_formatting_config, "comment", None)
+        comment = defval_dict(user_formatting_config, "comment", None)
+        if comment:
+            formatters.comment = Comment(text=comment.text, author=comment.author, width=comment.width, height=comment.height)
+
         tmp_ref = defval_dict(col_data, "references", None)
         formatters.reference = ColRef.from_registry(tmp_ref) if tmp_ref else None
         return cls(name=name, type=FormatType.COLUMN, formatters=formatters,
@@ -118,7 +121,7 @@ class TableFormat(Formatter):
         def get_tbl_style(ts_dict: Box) -> openpyxl.worksheet.table.TableStyleInfo:
             # Helper function to fill up table style
             if ts_dict:
-                t_tbl_style = TableStyleInfo(name='TableStyleMedium')  # Default name
+                t_tbl_style = TableStyleInfo(name='TableStyleMedium2')  # Default name
                 key_mapper = {'name': 'name', 'show_first_column': 'showFirstColumn',
                               'show_last_column': 'showLastColumn', 'show_row_stripes': 'showRowStripes',
                               'show_column_stripes': 'showColumnStripes'}
@@ -129,7 +132,7 @@ class TableFormat(Formatter):
                 return None
 
         def get_sheet_alignment(align_dict: Box):
-            align = Alignment()
+            align = Alignment(horizontal=TableFormat.DEFAULT_HORIZONTAL_ALIGNMENT, wrap_text=TableFormat.DEFAULT_WRAP_TEXT)
             align.horizontal = defval_dict(align_dict, 'horizontal', TableFormat.DEFAULT_HORIZONTAL_ALIGNMENT)
             align.wrap_text = defval_dict(align_dict, 'wrap_text', TableFormat.DEFAULT_WRAP_TEXT)
             return align

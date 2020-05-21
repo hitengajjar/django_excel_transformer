@@ -40,11 +40,10 @@ def fields_exists(datadict: {}, fields: []) -> (bool, []):
         if f not in datadict:
             missing.append(f)
             status = False
-
     return status, missing
 
 def defval_dict(dict, key, default):
-    return dict[key] if dict and key in dict else default
+    return dict.get(key, default) if dict else default
 
 def val(boxv1, v2):
     return v2 if not boxv1 or boxv1 == Box() else boxv1
@@ -57,7 +56,7 @@ def get_attr_from_dict(box_obj, field):
 
 
 def getvalue(input, cls_nm):
-    # TODO: HG: Need to consider various different input types
+    # TODO: HG: Need to consider various input types
     return cls_nm(input)
 
 
@@ -98,7 +97,7 @@ def lower(data):
         return data
 
 
-def get_model_fields(model, lower_case=False):
+def get_model_fields(model):
     # if not lower_case:
     model_fields = {f.name: f for f in model._meta.fields + model._meta.many_to_many} if model else None
     # else:
@@ -125,44 +124,3 @@ def get_model(model_name: str):
         raise ValueError("model [%s] doesn't exist" % model_name)
 
     return model[0]
-#
-#
-# def get_ref_model_fields(model_name: str, col_name: str, ref: str) -> ():
-#     """ Return reference Model and Field object. In case of error return (None, None) """
-#     ref_model = ref_field = None
-#     if model_name and col_name and ref:
-#         model = get_model(model_name)
-#
-#         if model:
-#             model_fields = {lower(f.name): f for f in model._meta.fields + model._meta.many_to_many}
-#             ref_col_name = ref.rsplit('.', 1)[-1:][0].strip().lower()
-#             if ref and not model_fields[col_name].is_relation:
-#                 raise AttributeError("model [%s], field [%s] isn't a reference field. mapper references: [%s]" %
-#                                      (model_name, col_name, ref))
-#
-#             if ref.strip().split('.')[0].strip() == '$model':
-#                 ref_model = model_fields[col_name].related_model
-#             else:
-#                 # TODO: HG: Ideally we don't need this unless we provide functionality where sheet_column_name is different from data_field
-#                 #           but in that case too, we need to be able to map column_name to field_name which we don't have right now.
-#                 ref_model_str = ref.rsplit('.', 2)[-2:][0].strip().lower() if len(ref.rsplit('.', 2)[-2:]) > 1 else None
-#                 tmp_model = [m for m in django.apps.apps.get_models() if
-#                              m._meta.model_name.lower() == ref_model_str][0] if ref_model_str else None
-#
-#                 ref_model = tmp_model if tmp_model == model_fields[col_name].related_model else None
-#
-#             if ref_model:
-#                 ref_field = None
-#                 for f in ref_model._meta.fields:
-#                     if f.name == ref_col_name:
-#                         ref_field = f
-#                         break
-#                 # if ref_field:
-#                 #     return (ref_model, ref_field)
-
-    # return (ref_model, ref_field)
-
-    # Test cases
-    #   model_name = [None, 'panopticum.models.modelname', 'modelname', 'something that doesn't exist']
-    #   col_name = [None, 'something that doesn't exist']
-    #   ref_str = [None, 'something that doesn't exist', 'models.model_name.field_name, '$model.field_name']

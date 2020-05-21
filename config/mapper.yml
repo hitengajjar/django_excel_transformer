@@ -5,22 +5,31 @@ defaults: # default values picked from here.
     read_only: false
     hidden: false  # Sheet will be exported as hidden
     table_style:
-      name: "TableStyleMedium"  # Excel built-in style names. TableStyleLight1 - TableStyleLight21, TableStyleMedium1 - TableStyleMedium28, TableStyleDark1 - TableStyleDark11
-      show_first_column: false  # if set to true, excel will show first column with bold font
+      name: "TableStyleMedium2"  # Excel built-in style names. TableStyleLight1 - TableStyleLight21, TableStyleMedium1 - TableStyleMedium28, TableStyleDark1 - TableStyleDark11
+      # show_first_column: false  # if set to true, excel will show first column with bold font
       show_last_column: false  # if set to true, excel will show last column with bold font
       show_row_stripes: true  # if set to true, excel will show alternate rows with light colored background
-      show_column_stripes: true  # if set to true, excel will show alternate columns with light colored background
+      # show_column_stripes: false  # if set to true, excel will show alternate columns with light colored background
     alignment:
       wrap_text: true
       horizontal: justify
     data:  # Applicable at column level
-      chars_wrap: 20
+      chars_wrap: 10
       comment:
         text: ""  # comment will be ignored if text == ""
         author: "Admin@github.com"  # Excel shows author name along with comment. This field can be used to provide author name
         height_len: 110
         width_len: 230
-
+# TODO: HG: Have to replace above with below
+#      - columns: ["name"]
+#        chars_wrap: 20
+#      - columns: ["*"]
+#        chars_wrap: 10
+#        comment:
+#          text: ""  # comment will be ignored if text == ""
+#          author: "Admin@github.com"  # Excel shows author name along with comment. This field can be used to provide author name
+#          height_len: 110
+#          width_len: 230
 datasets:
   comp_version:
     model_name: "panopticum.models.ComponentVersionModel"
@@ -77,7 +86,7 @@ datasets:
         references: ["$model.component", "$model.version"]
       - columns: ["location_class", "product_version", "environment", "open_ports"]
         references: ["$model.name"]
-      - columns: ["open_ports", "notes"]
+      - columns: ["notes"]
 
   product_version:
     model_name: "panopticum.models.ProductVersionModel"
@@ -94,7 +103,7 @@ datasets:
       - columns: ["name"]
 
   _multi_tables:  # Special case, should be used with special name
-    model_names: ["panopticum.models.FrameworkModel","panopticum.models.ComponentDataPrivacyClassModel",
+    model_names: ["panopticum.models.ORMModel", "panopticum.models.FrameworkModel","panopticum.models.ComponentDataPrivacyClassModel",
                   "panopticum.models.ComponentRuntimeTypeModel","panopticum.models.CountryModel","panopticum.models.DatabaseVendorModel",
                   "panopticum.models.DeploymentEnvironmentModel", "panopticum.models.DeploymentLocationClassModel",
                   "panopticum.models.LoggerModel", "panopticum.models.ProductFamilyModel", "panopticum.models.SoftwareVendorModel",
@@ -102,6 +111,7 @@ datasets:
     index_key: ["name"]
     data:
       - columns: ["*"]
+        references: ["$model.name"]
 
 filters:
   latest_record:
@@ -121,6 +131,7 @@ sheets:
     dataset: comp_version  # all columns defined in dataset is exported.
     formatting:
       tab_color: "00008B"
+      sheet_pos: 1  # HG: TODO: Have to consider this.
       data:
         - columns: ["dev_*"]
           comment:
@@ -131,13 +142,14 @@ sheets:
           comment:
             text: "Multiple entries separated by space"
         - columns: ["owner_*"]
-          read_only: true               # only export
+          read_only: true               # only export HG: TODO: and has no effect if whole worksheet is not locked
 
   - sheet_name: "CompVersion_wo_latest"
     dataset: comp_version
     view: wo_latest_record  # Acts as data dataview
     formatting:
       tab_color: "00008B"
+      sheet_pos: 2
       data:
         - columns: ["dev_*"]
           comment:
@@ -154,6 +166,7 @@ sheets:
     dataset: component
     formatting:
       tab_color: "00008B"
+      sheet_pos: 3
       data:
         - columns: ["description"]
           chars_wrap: 50
@@ -162,12 +175,16 @@ sheets:
   - sheet_name: "CompCategories"
     dataset: component_category
     formatting:
+      sheet_pos: 4
       data:
+        - columns: ["name"]
+          chars_wrap: 20
         - columns: ["description"]
           chars_wrap: 50
 
   - sheet_name: "CompSubCategories"
     dataset: component_subcategory
+    sheet_pos: 5
     formatting:
       data:
         - columns: ["name", "category"]
@@ -212,4 +229,7 @@ sheets:
     dataset: _multi_tables
     formatting:
       read_only: true
+    data:
+      - columns: ["name"]
+        chars_wrap: 30
 

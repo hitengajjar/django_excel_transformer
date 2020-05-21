@@ -29,11 +29,14 @@ def get_defaults(defaults):
         f.tab_color = "D9D9D9"
 
         # Table level
-        f.table_style.name = val(config_f.read_only, 'TableStyleMedium')
-        f.table_style.show_first_column = val(config_f.table_style.show_first_column, False)
+        f.table_style.name = val(config_f.table_style.name, 'TableStyleMedium2')
+        # f.table_style.show_first_column = val(config_f.table_style.show_first_column, False)
         f.table_style.show_last_column = val(config_f.table_style.show_last_column, False)
         f.table_style.show_row_stripes = val(config_f.table_style.show_row_stripes, True)
-        f.table_style.show_column_stripes = val(config_f.table_style.show_column_stripes, True)
+        # f.table_style.show_column_stripes = val(config_f.table_style.show_column_stripes, True)
+        #TODO: Alignment settings to be considered.
+        # # TODO: HG: rename column.chars_wrap to width and also if alignment.wrap is enabled then copy it to column.wrap
+        # TODO: Validate received data types.
         # Column level
         f.data.chars_wrap = val(config_f.data.chars_wrap, 20)
         f.data.comment.text = val(config_f.data.comment.text, '')
@@ -98,10 +101,10 @@ class Parser(object):
                 formatting.read_only = defval_dict(ow, 'read_only', default.read_only)
                 formatting.tab_color = defval_dict(ow, 'tab_color', default.tab_color)
                 formatting.table_style.name = defval_dict(ow.table_style, 'name', default.table_style.name)
-                formatting.table_style.show_first_column = defval_dict(ow.table_style, 'show_first_column', default.table_style.show_first_column)
+                # formatting.table_style.show_first_column = defval_dict(ow.table_style, 'show_first_column', default.table_style.show_first_column)
                 formatting.table_style.show_last_column = defval_dict(ow.table_style, 'show_last_column', default.table_style.show_last_column)
                 formatting.table_style.show_row_stripes = defval_dict(ow.table_style, 'show_row_stripes', default.table_style.show_row_stripes)
-                formatting.table_style.show_column_stripes = defval_dict(ow.table_style, 'show_column_stripes', default.table_style.show_column_stripes)
+                # formatting.table_style.show_column_stripes = defval_dict(ow.table_style, 'show_column_stripes', default.table_style.show_column_stripes)
 
             return formatting
 
@@ -149,7 +152,7 @@ class Parser(object):
                 raise AttributeError("model [%s], field [%s] isn't a reference field. mapper references: [%s]" %
                                      (model_name, django_field_nm, references))
             elif model._meta.get_field(django_field_nm).is_relation and not references:
-                references = ["$model.pk"]  # Lets add ref by ourselves, eases export and import
+                references = ["$model.id"]  # Lets add ref by ourselves, eases export and import
 
             for ref in references:
                 ref_field = ref.rsplit('.', 1)[-1:][0]
@@ -169,11 +172,11 @@ class Parser(object):
                 fields = [tmp for tmp in get_model_fields(ref_model).keys() if
                           lower(ref_field) == lower(
                               tmp)]  # need exact field name for de-referencing within Django model
-                if ref_field != 'pk' and not fields:
+                if ref_field != 'id' and not fields:
                     raise ValueError(
-                        'Invalid reference field [%s] for field [%s], model [%s]' % (
+                        'Invalid reference_field [%s] for field [%s], model [%s]' % (
                         ref_field, django_field_nm, model_name))
-                if ref_field != 'pk':
+                if ref_field != 'id':
                     ref_field = fields[0]
                 ref_data.append((ref_model_str, ref_field))
             return ref_data
