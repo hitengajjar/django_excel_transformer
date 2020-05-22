@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 import openpyxl
 from box import Box
@@ -9,7 +10,7 @@ from enum import Enum
 import attr
 from openpyxl.worksheet.table import TableStyleInfo
 
-from ..common import lower, val, defval_dict, Registry
+from ..common import lower, Registry
 
 
 class FormatType(Enum):
@@ -28,7 +29,7 @@ class Formatter:
 
     @classmethod
     def from_dict(cls, name: str, data: Box):
-        raise PermissionError("Cannot create object of %s" % cls)
+        raise PermissionError(f'Cannot create object of {cls}')
 
 @attr.s
 class ColRef(object):
@@ -80,19 +81,21 @@ class ColFormat(Formatter):
     def from_dict(cls, name: str, col_data=None):
         if col_data is None:
             col_data = Box(default_box=True)
-        formatters = Box(default_box=True)
-        user_formatting_config = defval_dict(col_data, 'formatting', None)
-        formatters.width = defval_dict(user_formatting_config, "chars_wrap", ColFormat.DEFAULT_WIDTH)
-        formatters.wrap = defval_dict(user_formatting_config, "wrap", ColFormat.DEFAULT_WRAP)
-        formatters.read_only = defval_dict(user_formatting_config, "read_only", ColFormat.DEFAULT_RO)
-        comment = defval_dict(user_formatting_config, "comment", None)
-        if comment:
-            formatters.comment = Comment(text=comment.text, author=comment.author, width=comment.width, height=comment.height)
+        formatters = Box(default_box=True, width=ColFormat.DEFAULT_WIDTH, wrap=ColFormat.DEFAULT_WRAP,
+                         read_only=ColFormat.DEFAULT_RO)
+        user_formatting_config = col_data.get('formatting', None)
+        if user_formatting_config:
+            formatters.width = user_formatting_config.get("chars_wrap", ColFormat.DEFAULT_WIDTH)
+            formatters.wrap = user_formatting_config.get("wrap", ColFormat.DEFAULT_WRAP)
+            formatters.read_only = user_formatting_config.get("read_only", ColFormat.DEFAULT_RO)
+            comment = user_formatting_config.get("comment", None)
+            if comment:
+                formatters.comment = Comment(text=comment.text, author=comment.author, width=comment.width, height=comment.height)
 
-        tmp_ref = defval_dict(col_data, "references", None)
+        tmp_ref = col_data.get("references", None)
         formatters.reference = ColRef.from_registry(tmp_ref) if tmp_ref else None
         return cls(name=name, type=FormatType.COLUMN, formatters=formatters,
-                  column_number=defval_dict(col_data, 'column_number', 'A'))
+                  column_number=col_data.get('column_number', 'A'))
 
     def update_excel_val(self, excel_val: dict):
         self.excel_val = excel_val
@@ -110,15 +113,17 @@ class TableFormat(Formatter):
     DEFAULT_READONLY = False
 
     columns = attr.ib(validator=attr.validators.instance_of(Box))  # Box of ColFormat
-    last_column_number = attr.ib(validator=attr.validators.instance_of(str))
-    sheet_position = attr.ib(default=None)
+    # last_column_number = attr.ib(validator=attr.validators.instance_of(str))
+    sheet_position = attr.ib(default=-1)
 
     @classmethod
     def from_dict(cls, name: str, t_fmting=None, c_fmting=None):
         if t_fmting is None:
             t_fmting = Box(default_box=True)
+        if c_fmting is None:
+            c_fmting = Box(default_box=True)
 
-        def get_tbl_style(ts_dict: Box) -> openpyxl.worksheet.table.TableStyleInfo:
+        def get_tbl_style(ts_dict: Box) -> Optional[TableStyleInfo]:
             # Helper function to fill up table style
             if ts_dict:
                 t_tbl_style = TableStyleInfo(name='TableStyleMedium2')  # Default name
@@ -133,24 +138,27 @@ class TableFormat(Formatter):
 
         def get_sheet_alignment(align_dict: Box):
             align = Alignment(horizontal=TableFormat.DEFAULT_HORIZONTAL_ALIGNMENT, wrap_text=TableFormat.DEFAULT_WRAP_TEXT)
-            align.horizontal = defval_dict(align_dict, 'horizontal', TableFormat.DEFAULT_HORIZONTAL_ALIGNMENT)
-            align.wrap_text = defval_dict(align_dict, 'wrap_text', TableFormat.DEFAULT_WRAP_TEXT)
+            if align_dict:
+                align.horizontal = align_dict.get('horizontal', TableFormat.DEFAULT_HORIZONTAL_ALIGNMENT)
+                align.wrap_text = align_dict.get('wrap_text', TableFormat.DEFAULT_WRAP_TEXT)
             return align
 
         formatters = Box(default_box=True)
-        formatters.table_style_info = get_tbl_style(defval_dict(t_fmting, "table_style", Box(default_box=True)))
-        formatters.locked = defval_dict(t_fmting, "read_only", TableFormat.DEFAULT_READONLY)
-        formatters.alignment = get_sheet_alignment(defval_dict(t_fmting, "alignment", Box(default_box=True)))
-        formatters.freeze_panes = defval_dict(t_fmting, "freeze_panes", TableFormat.DEFAULT_FREEZE_PANE)
+        formatters.table_style_info = get_tbl_style(t_fmting.get("table_style", Box(default_box=True)))
+        formatters.locked = t_fmting.get("read_only", TableFormat.DEFAULT_READONLY)
+        formatters.alignment = get_sheet_alignment(t_fmting.get("alignment", Box(default_box=True)))
+        formatters.freeze_panes = t_fmting.get("freeze_panes", TableFormat.DEFAULT_FREEZE_PANE)
 
         sheet_props = WorksheetProperties()
-        for f in {"tabColor", "filterMode"} & t_fmting.keys():
-            setattr(sheet_props, f, t_fmting[f])
+        if 'tab_color' in t_fmting:
+            sheet_props.tabColor = t_fmting['tab_color']
         formatters.sheet_props = sheet_props
+        sheet_position = t_fmting.get("position", -1)
+        if '*' == sheet_position:
+            sheet_position = -1
 
         obj = cls(name=name, type=FormatType.TABLE, formatters=formatters,
-                  columns=Box(default_box=True), last_column_number='A',
-                  sheet_position=defval_dict(t_fmting, "position", None))
+                  columns=Box(default_box=True), sheet_position=sheet_position)
         count = 1
         column_number = 'A'
         for col_nm, col_data in c_fmting.items():  # handle columns
@@ -159,9 +167,7 @@ class TableFormat(Formatter):
             col_data['column_number'] = column_number
             count += 1
             obj.reg_col(ColFormat.from_dict(col_nm, col_data))
-
-        obj.last_column_number = column_number
-
+        # obj.last_column_number = column_number
         return obj
 
     def reg_col(self, col_data: ColFormat = None):

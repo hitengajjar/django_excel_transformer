@@ -1,11 +1,7 @@
 import logging
 import attr
 
-# import openpyxl
 from box import Box
-
-# from panopticum.management.commands.django_excel_converter.export.excel_format import TableFormat
-# from panopticum.models import User
 from ..common import Registry, defval_dict, lower
 from .excel_format import TableFormat
 
@@ -35,18 +31,15 @@ class ExportableSheet(object):
         filters = defval_dict(sheetdata, 'filters', None)
         data = defval_dict(defval_dict(sheetdata, 'dataset', None), 'data', None)
         model = defval_dict(defval_dict(sheetdata, 'dataset', None), 'model', None)
-        # formatting = Box(default_box=True)
         formatting = defval_dict(sheetdata, 'formatting', Box(default_box=True))
-        #formatting.col_formatting = lower(data)  # We bring column cf in Table Formatting
 
         missing_fields = [k for k, v in {'name': sheet_nm, 'model': model, 'data': data}.items() if not v]
         if missing_fields:
-            raise ValueError('%s missing' % ','.join(missing_fields))
+            raise ValueError(f'{ ",".join(missing_fields) } missing')
 
-        # TODO: HG: it would be good idea to do _fetch_data() before and create ExportableSheet with actual data
         obj = cls(name=sheet_nm, model=model, data=data, filters=filters, columns=list(data.keys()),
                   formatting=TableFormat.from_dict(model._meta.model_name, formatting, data))
-        obj._fetch_data()  # TODO: HG: Should be done before
+        obj._fetch_data()
         return obj
 
     def get_formatting(self):
@@ -54,33 +47,6 @@ class ExportableSheet(object):
 
     def _fetch_data(self):
         def fetch_data(o, data):
-
-            def _create_multientry_str(iterables):  # TODO: HG:
-                tmp_str: str = ""
-                if isinstance(iterables, list):
-                    for i in iterables:
-                        tmp_str += "* " + i + "\n"
-                else:  # TODO: HG: Check object type
-                    for d in iterables.all() if iterables is not None else []:
-                        tmp_str += "* " + d.name + "\n"
-                return tmp_str[:-1]  # remove last character '\n'
-
-            def _create_email_str(person) -> str:  # TODO: HG:
-                """ Returns formatted Person object in format "firstname lastname <email@address>" """
-                return (person.first_name
-                        + " "
-                        + person.last_name
-                        + " <"
-                        + person.email
-                        + ">") if person is not None else ""
-
-            def _create_multiemail_str(self, people):  # TODO: HG:
-                """ Returns multiple formatted Person objects. It uses _create_email_str() function defined above"""
-                tmp_str: str = ""
-                for d in people.all() if people is not None else []:
-                    tmp_str += "* " + self._create_email_str(d) + ";" + "\n"
-                return tmp_str[:-2]  # remove last character ','
-
             def get_ref_data(o, refs):
                 if not o:
                     return None
@@ -94,7 +60,6 @@ class ExportableSheet(object):
                     # Check if references is provided by user if not then we use 'pk'
                     ref_fields = ['pk'] if not value.references else [ref for _, ref in value.references]
                     ref_objs = getattr(o, field).only(*ref_fields)
-                    # vals.append('\n'.join(['* ' + ' - '.join([str(getattr(ref_obj, ref_f)) for ref_f in ref_fields]) for ref_obj in ref_objs]))
                     vals.append('\n'.join(['* ' + get_ref_data(ref_obj, ref_fields) for ref_obj in ref_objs]))
                 elif field in fkey_fields:
                     ref_fields = ['pk'] if not value.references else [ref for _, ref in value.references]
@@ -104,7 +69,7 @@ class ExportableSheet(object):
 
             return vals
 
-        logging.debug("Fetching data for [%s]" % self.name)
+        logging.debug(f'Fetching data for [{self.name}]')
         self.dbdata = []
         dbobjs = None
         if self.filters:
@@ -113,7 +78,6 @@ class ExportableSheet(object):
             pass
         #else:
         dbobjs = self.model.objects.only(*self.data.keys())
-
         self.dbdata.extend([fetch_data(o, self.data) for o in dbobjs])
 
 
@@ -129,7 +93,7 @@ class Exporter(object):
             sheet = Registry.parser.get_sheet(sheet_nm)
             es = ExportableSheet.from_sheetdata(sheet)
             self.sheets[sheet_nm] = es
-            logging.info('Exporting sheet [%s]' % sheet_nm)
+            logging.info(f'Exporting sheet [{sheet_nm}]')
             self._xlswriter.update_sheet(sheet_nm, es.columns, es.dbdata, es.formatting)
 
     def get_sheet(self, sheet_nm) -> ExportableSheet:
@@ -143,8 +107,7 @@ class Exporter(object):
         """
         matching_sheets = [v for _, v in Registry.exporter.sheets.items() if lower(model_nm) in lower(v.model.__name__)]
         if len(matching_sheets) > 1:
-            # not expected, throw exception
-            raise ValueError('multiple sheets for model [%s]. Try providing full qualified name.' % (model_nm))
+            raise ValueError(f'multiple sheets for model [{model_nm}]. Try providing full qualified name.')
         elif not matching_sheets:
             return None
         else:

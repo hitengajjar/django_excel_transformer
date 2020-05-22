@@ -6,10 +6,8 @@ defaults: # default values picked from here.
     hidden: false  # Sheet will be exported as hidden
     table_style:
       name: "TableStyleMedium2"  # Excel built-in style names. TableStyleLight1 - TableStyleLight21, TableStyleMedium1 - TableStyleMedium28, TableStyleDark1 - TableStyleDark11
-      # show_first_column: false  # if set to true, excel will show first column with bold font
       show_last_column: false  # if set to true, excel will show last column with bold font
       show_row_stripes: true  # if set to true, excel will show alternate rows with light colored background
-      # show_column_stripes: false  # if set to true, excel will show alternate columns with light colored background
     alignment:
       wrap_text: true
       horizontal: justify
@@ -131,17 +129,21 @@ sheets:
     dataset: comp_version  # all columns defined in dataset is exported.
     formatting:
       tab_color: "00008B"
-      sheet_pos: 1  # HG: TODO: Have to consider this.
+      position: 1  # HG: TODO: Have to consider this.
       data:
+        - columns: ["component"]
+          chars_wrap: 20
         - columns: ["dev_*"]
+          chars_wrap: 20
           comment:
             text: "Multiple entries, each on separate line and starts with '* '"
         - columns: ["dev_raml", "dev_repo", "dev_public_repo", "dev_jira_component", "dev_build_jenkins_job",
                     "dev_docs", "dev_public_docs", "dev_commit_link", "dev_api_is_public"]
-          chars_wrap: 35
+          chars_wrap: 25
           comment:
             text: "Multiple entries separated by space"
         - columns: ["owner_*"]
+          chars_wrap: 30
           read_only: true               # only export HG: TODO: and has no effect if whole worksheet is not locked
 
   - sheet_name: "CompVersion_wo_latest"
@@ -149,9 +151,10 @@ sheets:
     view: wo_latest_record  # Acts as data dataview
     formatting:
       tab_color: "00008B"
-      sheet_pos: 2
+      position: 2
       data:
         - columns: ["dev_*"]
+          chars_wrap: 20
           comment:
             text: "Multiple entries, each on separate line"
         - columns: ["dev_raml", "dev_repo", "dev_public_repo", "dev_jira_component", "dev_build_jenkins_job",
@@ -166,16 +169,19 @@ sheets:
     dataset: component
     formatting:
       tab_color: "00008B"
-      sheet_pos: 3
+      position: 3
       data:
+        - columns: ["name"]
+          chars_wrap: 20
         - columns: ["description"]
           chars_wrap: 50
-      # - columns: ["runtime_type", "data_privacy_class", "category", "subcategory", "vendor"]
+        - columns: ["runtime_type", "data_privacy_class", "category", "subcategory", "vendor"]
+          chars_wrap: 20
 
   - sheet_name: "CompCategories"
     dataset: component_category
     formatting:
-      sheet_pos: 4
+      position: 4
       data:
         - columns: ["name"]
           chars_wrap: 20
@@ -184,8 +190,8 @@ sheets:
 
   - sheet_name: "CompSubCategories"
     dataset: component_subcategory
-    sheet_pos: 5
     formatting:
+      position: 5
       data:
         - columns: ["name", "category"]
           chars_wrap: 20
@@ -194,10 +200,16 @@ sheets:
 
   - sheet_name: "Languages"
     dataset: language
+    formatting:
+      position: 8
+      data:
+          - columns: ["name"]
+            chars_wrap: 30
 
   - sheet_name: "CompDependency"
     dataset: component_dependency
     formatting:
+      position: 6
       read_only: true  # sheet won't be editable
       data:
         - columns: ["version"]
@@ -208,6 +220,7 @@ sheets:
   - sheet_name: "CompDeployment"
     dataset: component_deployment
     formatting:
+      position: 7
       read_only: true
       data:
         - columns: ["open_ports"] # additional properties for open_port
@@ -220,6 +233,7 @@ sheets:
   - sheet_name: "ProdVersion"
     dataset: product_version
     formatting:
+      position: 9
       read_only: true
       data:
         - columns: ["family"]
@@ -228,8 +242,9 @@ sheets:
   - sheet_name: "*" # use model_name as name
     dataset: _multi_tables
     formatting:
+      position: 9
       read_only: true
-    data:
-      - columns: ["name"]
-        chars_wrap: 30
+      data:
+        - columns: ["name"]
+          chars_wrap: 20
 
