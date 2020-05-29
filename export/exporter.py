@@ -88,8 +88,7 @@ class Exporter(object):
         pass
 
     def export(self):
-        sheet_nms = Registry.parser.get_sheet_names(export_sequence=True)
-        for sheet_nm in sheet_nms:
+        for sheet_nm in Registry.parser.get_sheet_names(export_sequence=True):
             sheet = Registry.parser.get_sheet(sheet_nm)
             es = ExportableSheet.from_sheetdata(sheet)
             self.sheets[sheet_nm] = es

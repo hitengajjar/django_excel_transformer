@@ -102,15 +102,16 @@ There are primarily 2 main inputs to the application -
     3. Exported sheets are excel formatted using formatting information if provided from mapper
 
 ## TODO
-* Importer application
-* Export multiple datasets to same sheet (allow relations)
-* Apply predefined filters like export latest-only, sort
-* Parser errors should point YAML line number
-* Logic for data type validation for each YAML field needs to be improved and made generic
-* Support M2M reverse relationship. e.g. In Panopticum, we would like to export/import [`DatacenterModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L723) within [`ComponentDeploymentModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L680) sheet.
-* In case of export, if a model is exported to multiple excel sheets (possible due to usage of different filters), then any reference into it should be supported. e.g. [`ComponentVersionModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L365) is exported to 2 sheets `compver_latest` having all latest version and `compver_notlatest` having all versions which aren't part of `compver_latest`, while data within sheet [`ComponentDependencyModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L594) wants to provide excel data validation on [`version`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L602) field which should refer to either `compver_latest` or `compver_notlatest` 
-* Auto tests
-* Version support (atleast provide version say to Django command with `-v` option)
-* For export, have sheet position for models. Make this configurable via mapper YAML file.
-* Generic option to exclude specific fields at time of export. e.g. `id`
-* `read_only` configuration option should make worksheets non-editable.
+* P1 - Importer application
+* P4 - Export multiple datasets to same sheet (allow relations)
+* P2 - Apply predefined filters like export latest-only, sort
+* P2 - Parser errors should point YAML line number
+* P2 - Logic for data type validation for each YAML field needs to be improved and made generic
+* P2 - Support M2M reverse relationship. e.g. In Panopticum, we would like to export/import [`DatacenterModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L723) within [`ComponentDeploymentModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L680) sheet.
+* P3 - In case of export, if a model is exported to multiple excel sheets (possible due to usage of different filters), then any reference into it should be supported. e.g. [`ComponentVersionModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L365) is exported to 2 sheets `compver_latest` having all latest version and `compver_notlatest` having all versions which aren't part of `compver_latest`, while data within sheet [`ComponentDependencyModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L594) wants to provide excel data validation on [`version`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L602) field which should refer to either `compver_latest` or `compver_notlatest` 
+* P2 - Auto tests
+* P2 - Version support (atleast provide version say to Django command with `-v` option)
+* P1 - For export, have sheet position for models. Make this configurable via mapper YAML file.
+* P1 - Generic option to exclude specific fields at time of export. e.g. `id`
+* P1 - `read_only` configuration option should make worksheets non-editable.
+* P1 - Re-factor column defaults

@@ -60,7 +60,7 @@ class XlsWriter(object):
         sheet.append(columns)
         if len(data) <= 0:
             logging.error(f'No values to insert for [{sheet_nm}]')
-            sheet["$1$1"].comment = "No data available for insert"
+            sheet["$1$1"].comment = 'No data available for insert'
         else:
             for d in data:
                 sheet.append(d)
@@ -69,9 +69,9 @@ class XlsWriter(object):
 
                 sheet.column_dimensions[cf.column_number].width = cf.formatters.width
                 if cf.formatters.comment:
-                    sheet["${0}$1".format(cf.column_number)].comment = cf.formatters.comment
-                cr = cf.formatters.reference
-                if cr is not None:
+                    sheet[f'${cf.column_number}$1'].comment = cf.formatters.comment
+                cr = cf.formatters.get('reference', None)
+                if cr:
                     dv = DataValidation(type="list",
                                         formula1="{0}!{1}:{2}".format(quote_sheetname(cr.sheet_name),
                                                                       cr.startcell,

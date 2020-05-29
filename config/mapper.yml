@@ -12,22 +12,23 @@ defaults: # default values picked from here.
       wrap_text: true
       horizontal: justify
     data:  # Applicable at column level
-      chars_wrap: 10
-      comment:
-        text: ""  # comment will be ignored if text == ""
-        author: "Admin@github.com"  # Excel shows author name along with comment. This field can be used to provide author name
-        height_len: 110
-        width_len: 230
+#      chars_wrap: 10
+#      comment:
+#        text: ""  # comment will be ignored if text == ""
+#        author: "Admin@github.com"  # Excel shows author name along with comment. This col can be used to provide author name
+#        height_len: 110
+#        width_len: 230
 # TODO: HG: Have to replace above with below
-#      - columns: ["name"]
-#        chars_wrap: 20
-#      - columns: ["*"]
-#        chars_wrap: 10
-#        comment:
-#          text: ""  # comment will be ignored if text == ""
-#          author: "Admin@github.com"  # Excel shows author name along with comment. This field can be used to provide author name
-#          height_len: 110
-#          width_len: 230
+      - columns: ["name"]
+        chars_wrap: 20
+      - columns: ["*"]
+        chars_wrap: 10
+        comment:
+          text: ""  # comment will be ignored if text == ""
+          author: "admin@example.com"  # Excel shows author name along with comment. This col can be used to provide author name
+          height_len: 110
+          width_len: 230
+
 datasets:
   comp_version:
     model_name: "panopticum.models.ComponentVersionModel"
@@ -133,15 +134,16 @@ sheets:
       data:
         - columns: ["component"]
           chars_wrap: 20
-        - columns: ["dev_*"]
-          chars_wrap: 20
-          comment:
-            text: "Multiple entries, each on separate line and starts with '* '"
         - columns: ["dev_raml", "dev_repo", "dev_public_repo", "dev_jira_component", "dev_build_jenkins_job",
                     "dev_docs", "dev_public_docs", "dev_commit_link", "dev_api_is_public"]
           chars_wrap: 25
           comment:
             text: "Multiple entries separated by space"
+        - columns: ["dev_*"]  # sequence of dev_* matters, wildcard entries should be at the end and absolute entries should be before it
+                              #  the first match entry is always chosen
+          chars_wrap: 20
+          comment:
+            text: "Multiple entries, each on separate line and starts with '* '"
         - columns: ["owner_*"]
           chars_wrap: 30
           read_only: true               # only export HG: TODO: and has no effect if whole worksheet is not locked
@@ -171,8 +173,8 @@ sheets:
       tab_color: "00008B"
       position: 3
       data:
-        - columns: ["name"]
-          chars_wrap: 20
+#        - columns: ["name"]
+#          chars_wrap: 20
         - columns: ["description"]
           chars_wrap: 50
         - columns: ["runtime_type", "data_privacy_class", "category", "subcategory", "vendor"]
@@ -183,8 +185,8 @@ sheets:
     formatting:
       position: 4
       data:
-        - columns: ["name"]
-          chars_wrap: 20
+#        - columns: ["name"]
+#          chars_wrap: 20
         - columns: ["description"]
           chars_wrap: 50
 
@@ -193,7 +195,7 @@ sheets:
     formatting:
       position: 5
       data:
-        - columns: ["name", "category"]
+        - columns: ["category"]
           chars_wrap: 20
         - columns: ["description"]
           chars_wrap: 50
@@ -202,9 +204,6 @@ sheets:
     dataset: language
     formatting:
       position: 8
-      data:
-          - columns: ["name"]
-            chars_wrap: 30
 
   - sheet_name: "CompDependency"
     dataset: component_dependency
@@ -229,11 +228,13 @@ sheets:
           read_only: true
         - columns: ["notes"]
           chars_wrap: 50
+        - columns: ["service_name", "binary_name", "component_version", "location_class", "product_version", "environment"]
+          chars_wrap: 20
 
   - sheet_name: "ProdVersion"
     dataset: product_version
     formatting:
-      position: 9
+      position: 8
       read_only: true
       data:
         - columns: ["family"]
@@ -242,9 +243,6 @@ sheets:
   - sheet_name: "*" # use model_name as name
     dataset: _multi_tables
     formatting:
-      position: 9
+      position: -1  # Append
       read_only: true
-      data:
-        - columns: ["name"]
-          chars_wrap: 20
 
