@@ -26,6 +26,7 @@ def get_defaults(defaults):
     # Sheet level
     f.read_only = defval_dict(config_f, 'read_only', False)
     f.tab_color = "D9D9D9"
+    f.position = config_f.get('position', -1)
 
     # Table level
     f.table_style.name = defval_dict(config_f.table_style, 'name', 'TableStyleMedium2')
@@ -41,7 +42,7 @@ def get_defaults(defaults):
         # for column_config in defval_dict(config_f, 'data', []):
         #     for c in column_config.columns:
         #         col_formatting[c] = _get_setting(column_config)
-        col_formatting = _get_setting(None)
+        col_formatting = _get_col_setting(None)
         col_formatting['columns'] = "['*']"
         data.append(col_formatting)
     else:
@@ -52,7 +53,7 @@ def get_defaults(defaults):
     return defaults
 
 
-def _get_setting(datadict, is_comment: bool = False, excel_dv: bool = False):
+def _get_col_setting(datadict, is_comment: bool = False, excel_dv: bool = False):
     """
     Updates col_format object by fetching required column formatting values available in datadict :param datadict:
     dictionary with column formatting data. If None then return default with col '*' if available else system
@@ -105,6 +106,7 @@ class Parser(object):
         else:
             formatting = Box(default_box=True)
             formatting.read_only = defval_dict(ow, 'read_only', default.read_only)
+            formatting.position = defval_dict(ow, 'position', default.position)
             formatting.tab_color = defval_dict(ow, 'tab_color', default.tab_color)
             formatting.table_style.name = defval_dict(ow.table_style, 'name', default.table_style.name)
             # formatting.table_style.show_first_column = defval_dict(ow.table_style, 'show_first_column', default.table_style.show_first_column)
@@ -140,10 +142,10 @@ class Parser(object):
             for idx, entry in enumerate(datadict):
                 if 'columns' not in entry:
                     logging.error(f"For col '{col}', 'column' key missing inside '{entry}'. Dictionary is '{datadict}'")
-                    return _get_setting(None, is_comment=is_comment, excel_dv=excel_dv)
+                    return _get_col_setting(None, is_comment=is_comment, excel_dv=excel_dv)
                 else:
                     if [c for c in entry.columns if c == '*' or re.findall('^' + c, col)]:
-                        return _get_setting(datadict[idx], is_comment, excel_dv=excel_dv)
+                        return _get_col_setting(datadict[idx], is_comment, excel_dv=excel_dv)
             return None
 
         col_format = Box(default_box=True, chars_wrap=10, read_only=False)

@@ -19,7 +19,7 @@ defaults: # default values picked from here.
 #        height_len: 110
 #        width_len: 230
 # TODO: HG: Have to replace above with below
-      - columns: ["name"]
+      - columns: ["name", "description"]
         chars_wrap: 20
       - columns: ["*"]
         chars_wrap: 10
@@ -165,6 +165,7 @@ sheets:
           comment:
             text: "Multiple entries separated by space"
         - columns: ["owner_*"]
+          chars_wrap: 30
           read_only: true               # only export
 
   - sheet_name: "Components"
@@ -173,8 +174,6 @@ sheets:
       tab_color: "00008B"
       position: 3
       data:
-#        - columns: ["name"]
-#          chars_wrap: 20
         - columns: ["description"]
           chars_wrap: 50
         - columns: ["runtime_type", "data_privacy_class", "category", "subcategory", "vendor"]
@@ -185,8 +184,6 @@ sheets:
     formatting:
       position: 4
       data:
-#        - columns: ["name"]
-#          chars_wrap: 20
         - columns: ["description"]
           chars_wrap: 50
 
@@ -200,11 +197,6 @@ sheets:
         - columns: ["description"]
           chars_wrap: 50
 
-  - sheet_name: "Languages"
-    dataset: language
-    formatting:
-      position: 8
-
   - sheet_name: "CompDependency"
     dataset: component_dependency
     formatting:
@@ -213,6 +205,8 @@ sheets:
       data:
         - columns: ["version"]
           chars_wrap: 30
+        - columns: ["component"]
+          chars_wrap: 20
         - columns: ["notes"]
           chars_wrap: 50
 
@@ -231,10 +225,15 @@ sheets:
         - columns: ["service_name", "binary_name", "component_version", "location_class", "product_version", "environment"]
           chars_wrap: 20
 
+  - sheet_name: "Languages"
+    dataset: language
+    formatting:
+      position: 8
+
   - sheet_name: "ProdVersion"
     dataset: product_version
     formatting:
-      position: 8
+      position: 9
       read_only: true
       data:
         - columns: ["family"]

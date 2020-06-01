@@ -111,7 +111,7 @@ There are primarily 2 main inputs to the application -
 * P3 - In case of export, if a model is exported to multiple excel sheets (possible due to usage of different filters), then any reference into it should be supported. e.g. [`ComponentVersionModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L365) is exported to 2 sheets `compver_latest` having all latest version and `compver_notlatest` having all versions which aren't part of `compver_latest`, while data within sheet [`ComponentDependencyModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L594) wants to provide excel data validation on [`version`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L602) field which should refer to either `compver_latest` or `compver_notlatest` 
 * P2 - Auto tests
 * P2 - Version support (atleast provide version say to Django command with `-v` option)
-* P1 - For export, have sheet position for models. Make this configurable via mapper YAML file.
+* P1 - For export, have sheet position for models. Make this configurable via mapper YAML file
 * P1 - Generic option to exclude specific fields at time of export. e.g. `id`
-* P1 - `read_only` configuration option should make worksheets non-editable.
+* P1 - `read_only` configuration option should make worksheets non-editable
 * P1 - Re-factor column defaults

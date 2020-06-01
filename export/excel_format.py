@@ -162,8 +162,7 @@ class TableFormat(Formatter):
             sheet_props.tabColor = t_fmting['tab_color']
         formatters.sheet_props = sheet_props
         sheet_position = t_fmting.get("position", -1)
-        if '*' == sheet_position:
-            sheet_position = -1
+        sheet_position = sheet_position - 1 if sheet_position > 0 else -1 if '*' == sheet_position else sheet_position
 
         obj = cls(name=name, type=FormatType.TABLE, formatters=formatters,
                   columns=Box(default_box=True), sheet_position=sheet_position)
