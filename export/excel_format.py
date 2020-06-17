@@ -1,6 +1,7 @@
 import logging
 from typing import Optional
 
+import openpyxl
 from box import Box
 from openpyxl.styles import Alignment
 from openpyxl.worksheet.properties import WorksheetProperties
@@ -16,7 +17,6 @@ class FormatType(Enum):
     TABLE = 1
     COLUMN = 2
 
-
 @attr.s
 class Formatter:
     name = attr.ib(validator=attr.validators.instance_of(str))
@@ -30,7 +30,6 @@ class Formatter:
     @classmethod
     def from_dict(cls, name: str, data: Box):
         raise PermissionError(f'Cannot create object of {cls}')
-
 
 @attr.s
 class ColRef(object):
@@ -52,7 +51,6 @@ class ColRef(object):
         :param ref_data: reference data if exists
         :return: ColRef instance
         """
-
         if ref_data is None or len(ref_data) > 1:
             logging.info(f'Received invalid ref_data [{ref_data}]. Excel expects only one sheet.column for '
                          f'datavalidation. Ignoring!')
@@ -88,18 +86,17 @@ class ColFormat(Formatter):
             col_data = Box(default_box=True)
         formatters = Box(default_box=True, width=ColFormat.DEFAULT_WIDTH, wrap=ColFormat.DEFAULT_WRAP,
                          read_only=ColFormat.DEFAULT_RO)
-        user_formatting_config = col_data.get('formatting', None)
-        if user_formatting_config:
-            formatters.width = user_formatting_config.get('chars_wrap', ColFormat.DEFAULT_WIDTH)
-            formatters.wrap = user_formatting_config.get('wrap', ColFormat.DEFAULT_WRAP)
-            formatters.read_only = user_formatting_config.get('read_only', ColFormat.DEFAULT_RO)
-            comment = user_formatting_config.get('comment', None)
+        if 'formatting' in col_data:
+            col_data_fmtting = col_data.get('formatting')
+            formatters.width = col_data_fmtting.get('chars_wrap', ColFormat.DEFAULT_WIDTH)
+            formatters.wrap = col_data_fmtting.get('wrap', ColFormat.DEFAULT_WRAP)
+            formatters.locked = col_data_fmtting.get('read_only', ColFormat.DEFAULT_RO)
+            comment = col_data_fmtting.get('comment', None)
             if comment:
-                formatters.comment = Comment(text=comment.text, author=comment.author, width=comment.width,
-                                             height=comment.height)
+                formatters.comment = Comment(text=comment.text, author=comment.author, width=comment.width, height=comment.height)
 
         tmp_ref = col_data.get('references', None)
-        if user_formatting_config.dv:
+        if tmp_ref:
             formatters.reference = ColRef.from_registry(tmp_ref) if tmp_ref else None
         return cls(name=name, type=FormatType.COLUMN, formatters=formatters,
                    column_number=col_data.get('column_number', 'A'))
@@ -172,7 +169,10 @@ class TableFormat(Formatter):
                 chr(64 + int(count / 26)) + chr(64 + (int(count % 26) if int(count % 26) != 0 else 1))
             col_data['column_number'] = column_number
             count += 1
-            obj.reg_col(ColFormat.from_dict(col_nm, col_data))
+            col_obj = ColFormat.from_dict(col_nm, col_data)
+            obj.reg_col(col_obj)
+            # if col_obj.formatters.locked:
+            #     obj.formatters.locked = True
         # obj.last_column_number = column_number
         return obj
 
@@ -180,7 +180,7 @@ class TableFormat(Formatter):
         """ Registers column settings like width value, wrap enabled?, if data is referenced in other sheets
         Method chaining pattern used """
         if col_data is None:
-            raise ValueError('column cannot be None')
+            raise ValueError("column cannot be None")
         self.columns[lower(col_data.name)] = col_data
         return self
 

@@ -2,12 +2,15 @@ import logging
 import os
 
 import openpyxl
-from openpyxl.styles import Alignment
+from openpyxl.styles import Alignment, Protection
 from openpyxl.utils import quote_sheetname
 from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.worksheet.protection import SheetProtection
 from openpyxl.worksheet.table import TableStyleInfo
+from openpyxl.cell import Cell
 
 from .excel_format import TableFormat
+from box import Box
 
 
 class XlsWriter(object):
@@ -17,6 +20,18 @@ class XlsWriter(object):
         self._filename = filename
         self._wb = openpyxl.Workbook()
         self._wb.save(filename)  # Can raise PermissionError
+        self._sheet_pos = Box(default_box=True)  # maintain sheet position
+
+    def final(self):
+        # We will rearrange the sheets as per their position.
+        for nm, pos in self._sheet_pos.items():
+            sheet = self._wb[nm]
+            if pos != -1:
+                self._wb.move_sheet(sheet, pos - self._wb.index(sheet))
+            else:
+                self._wb.move_sheet(sheet, len(self._sheet_pos))
+
+        self._wb.save(self._filename)
 
     def _get_sheet_by_name(self, ws_name: str, read: bool = False, ws_details: TableFormat = None):
         """
@@ -26,20 +41,26 @@ class XlsWriter(object):
         :param ws_details:
         :return:
         """
+        self._sheet_pos[ws_name] = ws_details.sheet_position
+
         try:
             sheet = self._wb[ws_name]
+            self._wb.remove_sheet(sheet)
         except KeyError as e:
             if read:
                 raise e
             else:
                 try:
-                    sheet = self._wb.get_sheet_by_name('Sheet')
+                    sheet = self._wb['Sheet']  # default sheet
                     sheet.title = ws_name
+                    return sheet
                 except KeyError:
-                    sheet = self._wb.create_sheet(title=ws_name,
-                                                  index=ws_details.sheet_position)
-                    if ws_details.formatters.sheet_props is not None:
-                        sheet.sheet_properties = ws_details.formatters.sheet_props
+                    pass
+
+        sheet = self._wb.create_sheet(title=ws_name,
+                                      index=ws_details.sheet_position - 1 if ws_details.sheet_position != -1 else -1)
+        if ws_details.formatters.sheet_props is not None:
+            sheet.sheet_properties = ws_details.formatters.sheet_props
 
         return sheet
 
@@ -57,6 +78,7 @@ class XlsWriter(object):
             logging.error(f'[{"columns" if not columns else "data"}] required but received None')
 
         sheet = self._get_sheet_by_name(ws_name=sheet_nm, read=False, ws_details=tf)
+        col_lock = False
         sheet.append(columns)
         if len(data) <= 0:
             logging.error(f'No values to insert for [{sheet_nm}]')
@@ -81,6 +103,9 @@ class XlsWriter(object):
                 if tf.formatters.alignment.wrapText is True:
                     for cell in sheet[cf.column_number]:
                         cell.alignment = Alignment(wrapText=True)
+                        if cf.formatters.locked:
+                            col_lock = True
+                            cell.protection = Protection(locked=True)
 
             # Other Worksheet level settings
             sheet.alignment = tf.formatters.alignment
@@ -88,5 +113,15 @@ class XlsWriter(object):
             sheet.add_table(openpyxl.worksheet.table.Table(ref="%s" % sheet.dimensions,
                                                    displayName=sheet_nm.replace(" ", ""),
                                                    tableStyleInfo=tf.formatters.table_style_info))
+            if tf.formatters.locked:
+                sheet.protection.sheet = True
+            elif col_lock:
+                sheet.protection = SheetProtection(sheet=True,selectLockedCells=True,
+                                                   selectUnlockedCells=False,
+                                                   insertRows=True, insertHyperlinks=True, autoFilter=True,
+                                                   formatCells=True, formatColumns=True, formatRows=True,
+                                                   insertColumns=True, pivotTables=True)
+
+
         self._wb.save(self._filename)
         return

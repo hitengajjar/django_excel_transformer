@@ -28,7 +28,7 @@ class DBDataMistmatchError(Exception):
 
 def fields_exists(datadict: {}, fields: []) -> (bool, []):
     """
-    Checks if col exists in dictionary
+    Checks if field exists in dictionary
     :param datadict: source dictionary with kv
     :param fields: fields to check if they are present in dictionary
     :param exception: if

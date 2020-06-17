@@ -94,6 +94,7 @@ class Exporter(object):
             self.sheets[sheet_nm] = es
             logging.info(f'Exporting sheet [{sheet_nm}]')
             self._xlswriter.update_sheet(sheet_nm, es.columns, es.dbdata, es.formatting)
+        self._xlswriter.final()
 
     def get_sheet(self, sheet_nm) -> ExportableSheet:
         return defval_dict(self.sheets, sheet_nm, None)
