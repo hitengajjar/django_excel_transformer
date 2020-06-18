@@ -103,7 +103,7 @@ class XlsWriter(object):
                 if tf.formatters.alignment.wrapText is True:
                     for cell in sheet[cf.column_number]:
                         cell.alignment = Alignment(wrapText=True)
-                        if cf.formatters.locked:
+                        if cf.formatters.locked or tf.formatters.locked:
                             col_lock = True
                             cell.protection = Protection(locked=True)
                         else:
