@@ -32,13 +32,13 @@ To use this project as [django admin command](https://docs.djangoproject.com/en/
     class Command(BaseCommand):
         def add_arguments(self, parser):
             parser.add_argument('-x', '--' + 'xls_file', help='Export XLS file', required=True)
-            parser.add_argument('-c', '--' + 'config', help='Config mapper file (preferred absolute path)', required=True)
+            parser.add_argument('-c', '--' + 'config', help='Config file (preferred absolute path)', required=True)
     
         def handle(self, *args, **options):
             # Registry maintains common instance for parser, exporter, importer etc. Its used for internal processing.
             Registry.parser = Parser(options['config'])  # you need to provide location to configuration file.
             Registry.parser.parse()  # wrap this around try-except to handle any exceptions
-            # you can check for errors using parser.errors() and resolve errors in mapper.YAML
+            # you can check for errors using parser.errors() and resolve errors in config.YAML
     
             # Now instantiate exporter by providing XlsWriter(path_to_export_xls_file, should_overwrite_yes_no)
             overwrite_yes = True
@@ -51,13 +51,13 @@ To use this project as [django admin command](https://docs.djangoproject.com/en/
 4. You can run Django command as shown below
    ```bash
    cd <django_project_base_folder>
-   python ./manage django-excel-converter -x django_excel_converter_export.xlsx -c mapper.YAML
+   python ./manage django-excel-converter -x django_excel_converter_export.xlsx -c config.YAML
    ```
 
 5. You can also consider enable logging. In case of errors, this project dumps valuable processing information.
 
 ### Import Export from UI
-In this option, django-excel-converter project can be integrated within your Django application with predefined `mapper` configuration file to import/export from excel file. 
+In this option, django-excel-converter project can be integrated within your Django application with predefined `config` configuration file to import/export from excel file. 
 
 > TODO: provide technical details
 
@@ -72,6 +72,9 @@ In this option, django-excel-converter project can be integrated within your Dja
     * height
     * width
   * excel table style
+  * Protected sheets (whole sheet, certain columns only)
+  * FKEY fields have data validation enabled if related model is exported as well.
+  * Many to many fields exported without data validation enabled.
 
 # Technology
 1. Python3.6 -- should work with python v3.6 and above. However, its tested with python3.6
@@ -83,7 +86,7 @@ In this option, django-excel-converter project can be integrated within your Dja
 
 ## Internals
 Application is split into below components with specific role.
-1. **`class Parser`** -- responsible to parse configuration mapper YAML and provide dictionary of exportable sheets, its related dataset and formatting information.
+1. **`class Parser`** -- responsible to parse configuration config YAML and provide dictionary of exportable sheets, its related dataset and formatting information.
 2. **`class Registry`** -- responsible to provide global access to `Parser`, `Exporter`, `Importer` instances. This is used for internal functioning.
 3. **`class Exporter`** -- responsible for exporting Django models to the excel file. The dependence models should be exported first and then dependent so that excel sheets have correct data validation. This is achieved using DFS algorithm.
 4. **`class Importer`** -- responsible for import excel file into Django model. This class also provides additional functionality like `--dry-run` which can be useful to test excel data against database.
@@ -93,25 +96,22 @@ Application is split into below components with specific role.
 <img src="./static/class-diagram.png" width="1000">
 
 There are primarily 2 main inputs to the application -
-1. Mapper YAML file - this is link between Django models and excel workbook (excel file). Please see sample `config\mapper.yml` file for Panopticum
+1. Config YAML file - this is link between Django models and excel workbook (excel file). Please see sample `config\config.yml` file for Panopticum
 2. Excel file - (a) exporter case - file will be created, (b) importer case - data will be read from the file.
     1. Each Django model is exported to one or many sheets. Generally 1 model to 1 excel sheet.
     2. FKEY data is controlled via excel data validation
        
         > TODO: Add GIF explaining this case.
-    3. Exported sheets are excel formatted using formatting information if provided from mapper
+    3. Exported sheets are excel formatted using formatting information if provided in config.YAML
 
 ## TODO
 * P1 - Importer application
 * P4 - Export multiple datasets to same sheet (allow relations)
 * P2 - Apply predefined filters like export latest-only, sort
 * P2 - Parser errors should point YAML line number
-* P2 - Logic for data type validation for each YAML field needs to be improved and made generic
 * P2 - Support M2M reverse relationship. e.g. In Panopticum, we would like to export/import [`DatacenterModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L723) within [`ComponentDeploymentModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L680) sheet.
 * P3 - In case of export, if a model is exported to multiple excel sheets (possible due to usage of different filters), then any reference into it should be supported. e.g. [`ComponentVersionModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L365) is exported to 2 sheets `compver_latest` having all latest version and `compver_notlatest` having all versions which aren't part of `compver_latest`, while data within sheet [`ComponentDependencyModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L594) wants to provide excel data validation on [`version`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L602) field which should refer to either `compver_latest` or `compver_notlatest` 
 * P2 - Auto tests
 * P2 - Version support (atleast provide version say to Django command with `-v` option)
-* P1 - For export, have sheet position for models. Make this configurable via mapper YAML file
+* P1 - For export, consider sheet positions in the order they are defined in config YAML file
 * P1 - Generic option to exclude specific fields at time of export. e.g. `id`
-* P1 - `read_only` configuration option should make worksheets non-editable
-* P1 - Re-factor column defaults
