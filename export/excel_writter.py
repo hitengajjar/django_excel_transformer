@@ -93,7 +93,7 @@ class XlsWriter(object):
                 if cf.formatters.comment:
                     sheet[f'${cf.column_number}$1'].comment = cf.formatters.comment
                 cr = cf.formatters.get('reference', None)
-                if cr:
+                if cr and cf.formatters.get('dv', True):
                     dv = DataValidation(type="list",
                                         formula1="{0}!{1}:{2}".format(quote_sheetname(cr.sheet_name),
                                                                       cr.startcell,
@@ -106,22 +106,25 @@ class XlsWriter(object):
                         if cf.formatters.locked:
                             col_lock = True
                             cell.protection = Protection(locked=True)
+                        else:
+                            cell.protection = Protection(locked=False)
 
             # Other Worksheet level settings
             sheet.alignment = tf.formatters.alignment
             sheet.freeze_panes = tf.formatters.freeze_panes
             sheet.add_table(openpyxl.worksheet.table.Table(ref="%s" % sheet.dimensions,
-                                                   displayName=sheet_nm.replace(" ", ""),
-                                                   tableStyleInfo=tf.formatters.table_style_info))
+                                                           displayName=sheet_nm.replace(" ", ""),
+                                                           tableStyleInfo=tf.formatters.table_style_info))
             if tf.formatters.locked:
                 sheet.protection.sheet = True
             elif col_lock:
-                sheet.protection = SheetProtection(sheet=True,selectLockedCells=True,
-                                                   selectUnlockedCells=False,
-                                                   insertRows=True, insertHyperlinks=True, autoFilter=True,
-                                                   formatCells=True, formatColumns=True, formatRows=True,
-                                                   insertColumns=True, pivotTables=True)
-
+                sheet.protection = SheetProtection(sheet=True, selectLockedCells=False,
+                                                   selectUnlockedCells=False, objects=True, scenarios=True,
+                                                   formatCells=True, formatRows=True, formatColumns=True,
+                                                   insertColumns=True, insertRows=True, insertHyperlinks=True,
+                                                   deleteColumns=True, deleteRows=True, sort=True, autoFilter=True,
+                                                   pivotTables=True,
+                                                   password=None)
 
         self._wb.save(self._filename)
         return

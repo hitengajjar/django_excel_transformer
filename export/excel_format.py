@@ -91,6 +91,7 @@ class ColFormat(Formatter):
             formatters.width = col_data_fmtting.get('chars_wrap', ColFormat.DEFAULT_WIDTH)
             formatters.wrap = col_data_fmtting.get('wrap', ColFormat.DEFAULT_WRAP)
             formatters.locked = col_data_fmtting.get('read_only', ColFormat.DEFAULT_RO)
+            formatters.dv = col_data_fmtting.get('dv', False)
             comment = col_data_fmtting.get('comment', None)
             if comment:
                 formatters.comment = Comment(text=comment.text, author=comment.author, width=comment.width, height=comment.height)
