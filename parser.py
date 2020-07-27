@@ -368,13 +368,13 @@ class Parser(object):
             try:
                 base_field = f'mapper.sheets[{sheet_name}]'
 
-                if 'view' in sheet:  # Validate view (filters)
-                    if sheet.view not in self._filters.keys():
-                        error(sheet_name, f'{base_field}.view', 'missing view. check mapper.filters',
-                              view=sheet.view)
+                if 'filter' in sheet:  # Validate filter
+                    if sheet.filter not in self._filters.keys():
+                        error(sheet_name, f'{base_field}.filter', 'missing filter. check mapper.filters',
+                              filter=sheet.filter)
                     else:
-                        sheet.filters = self._filters[sheet.view]
-                        del sheet.view
+                        sheet.filters = self._filters[sheet.filter]
+                        del sheet.filter
 
                 # Validate dataset existence
                 if not sheet.dataset or sheet.dataset not in self._datasets:

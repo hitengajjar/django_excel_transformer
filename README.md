@@ -115,3 +115,5 @@ There are primarily 2 main inputs to the application -
 * P2 - Version support (atleast provide version say to Django command with `-v` option)
 * P1 - For export, consider sheet positions in the order they are defined in config YAML file
 * P1 - Generic option to exclude specific fields at time of export. e.g. `id`
+* P2 - Exporter - Validate if all keys from `index_key` are exported
+* P3 - Importer - Parser should have option to skip formatting information 

@@ -121,7 +121,7 @@ filters:  # TODO: isn't implemented yet
 
 sheets:
   - sheet_name: "CompVersions"  # Will append numeric number if sheet already exists in excel
-    view: latest_record  # Acts as data dataview
+    filter: latest_record  # Acts as data dataview
     dataset: comp_version  # all columns defined in dataset is exported.
     formatting:
       tab_color: "00008B"
@@ -145,7 +145,7 @@ sheets:
 
 #  - sheet_name: "CompVersion_wo_latest"
 #    dataset: comp_version
-#    view: wo_latest_record  # Acts as data dataview
+#    filter: wo_latest_record  # Acts as data dataview
 #    formatting:
 #      tab_color: "00008B"
 #      position: 2
