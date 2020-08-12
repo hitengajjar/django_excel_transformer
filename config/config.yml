@@ -30,7 +30,7 @@ datasets:
     index_key: ["component", "version"]
     data:  # exporter will export columns in order they appear here.
       - attributes: ["component"]
-        references: ["$model.Name"]
+        references: ["$model.name"]
       - attributes: ["version"]
       - attributes: ["dev_*"]
         references: ["$model.name"]
@@ -66,7 +66,7 @@ datasets:
     index_key: ["version", "component"]
     data:
       - attributes: ["version"]
-        references: ["$model.component", "$model.version"]
+        references: ["$model.component", "$model.version"]  # Note we are not using $model.component.name because ComponentModel.def str() already returns 'name'
       - attributes: ["component"]
         references: ["$model.name"]
       - attributes: ["type", "notes"]

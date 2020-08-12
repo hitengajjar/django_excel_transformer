@@ -2,7 +2,7 @@ import logging
 import attr
 
 from box import Box
-from ..common import Registry, defval_dict, lower
+from ..common import Registry, getdictvalue, lower
 from .excel_format import TableFormat
 
 
@@ -27,11 +27,11 @@ class ExportableSheet(object):
         if not sheetdata:
             raise ValueError('Sheet_details missing')
 
-        sheet_nm = defval_dict(sheetdata, 'sheet_name', None)
-        filters = defval_dict(sheetdata, 'filters', None)
-        data = defval_dict(defval_dict(sheetdata, 'dataset', None), 'data', None)
-        model = defval_dict(defval_dict(sheetdata, 'dataset', None), 'model', None)
-        formatting = defval_dict(sheetdata, 'formatting', Box(default_box=True))
+        sheet_nm = getdictvalue(sheetdata, 'sheet_name', None)
+        filters = getdictvalue(sheetdata, 'filters', None)
+        data = getdictvalue(getdictvalue(sheetdata, 'dataset', None), 'data', None)
+        model = getdictvalue(getdictvalue(sheetdata, 'dataset', None), 'model', None)
+        formatting = getdictvalue(sheetdata, 'formatting', Box(default_box=True))
 
         missing_fields = [k for k, v in {'name': sheet_nm, 'model': model, 'data': data}.items() if not v]
         if missing_fields:
@@ -82,8 +82,7 @@ class ExportableSheet(object):
 
 
 class Exporter(object):
-    def __init__(self, xlswriter):
-        self._xlswriter = xlswriter
+    def __init__(self):
         self.sheets = Box(default_box=True)  # Maintains exportable sheets
         pass
 
@@ -93,11 +92,11 @@ class Exporter(object):
             es = ExportableSheet.from_sheetdata(sheet)
             self.sheets[sheet_nm] = es
             logging.info(f'Exporting sheet [{sheet_nm}]')
-            self._xlswriter.update_sheet(sheet_nm, es.columns, es.dbdata, es.formatting)
-        self._xlswriter.final()
+            Registry.xlwriter.update_sheet(sheet_nm, es.columns, es.dbdata, es.formatting)
+        Registry.xlwriter.final()
 
     def get_sheet(self, sheet_nm) -> ExportableSheet:
-        return defval_dict(self.sheets, sheet_nm, None)
+        return getdictvalue(self.sheets, sheet_nm, None)
 
     def get_sheet_by_model(self, model_nm) -> ExportableSheet:
         """

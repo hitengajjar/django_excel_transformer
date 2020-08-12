@@ -7,7 +7,7 @@ import traceback
 from itertools import chain
 from box import Box, BoxList
 
-from .common import get_attr_from_dict, lower, get_model_fields, val, get_model, defval_dict
+from .common import get_attr_from_dict, lower, get_model_fields, val, get_model, getdictvalue, get_references
 
 
 ## Documentation part
@@ -24,21 +24,21 @@ def get_defaults(defaults):
         config_f = defaults.formatting
 
     # Sheet level
-    f.read_only = defval_dict(config_f, 'read_only', False)
+    f.read_only = getdictvalue(config_f, 'read_only', False)
     f.tab_color = "D9D9D9"
     f.position = config_f.get('position', -1)
 
     # Table level
-    f.table_style.name = defval_dict(config_f.table_style, 'name', 'TableStyleMedium2')
+    f.table_style.name = getdictvalue(config_f.table_style, 'name', 'TableStyleMedium2')
     # f.table_style.show_first_column = defval_dict(config_f.table_style, 'show_first_column', False)
-    f.table_style.show_last_column = defval_dict(config_f.table_style, 'show_last_column', False)
-    f.table_style.show_row_stripes = defval_dict(config_f.table_style, 'show_row_stripes', True)
+    f.table_style.show_last_column = getdictvalue(config_f.table_style, 'show_last_column', False)
+    f.table_style.show_row_stripes = getdictvalue(config_f.table_style, 'show_row_stripes', True)
     # f.table_style.show_column_stripes = defval_dict(config_f.table_style, 'show_column_stripes', True)
 
     # Column level
     # col_formatting = Box(default_box=True)
     data = BoxList()
-    if not defval_dict(config_f, 'data', None):
+    if not getdictvalue(config_f, 'data', None):
         # for column_config in defval_dict(config_f, 'data', []):
         #     for c in column_config.attributes:
         #         col_formatting[c] = _get_setting(column_config)
@@ -69,7 +69,7 @@ def _get_col_setting(datadict, is_comment: bool = False, excel_dv: bool = False)
     if datadict and 'read_only' in datadict:
         col_format.read_only = datadict.read_only
     if (datadict and 'comment' in datadict) or is_comment:
-        comment = defval_dict(datadict, 'comment', def_comment)
+        comment = getdictvalue(datadict, 'comment', def_comment)
         col_format.comment.text = comment.get('text', def_comment.text)
         col_format.comment.author = comment.get('author', def_comment.author)
         col_format.comment.height_len = comment.get('height_len', def_comment.height_len)
@@ -105,15 +105,15 @@ class Parser(object):
             formatting = default
         else:
             formatting = Box(default_box=True)
-            formatting.read_only = defval_dict(ow, 'read_only', default.read_only)
-            formatting.position = defval_dict(ow, 'position', default.position)
-            formatting.tab_color = defval_dict(ow, 'tab_color', default.tab_color)
-            formatting.table_style.name = defval_dict(ow.table_style, 'name', default.table_style.name)
+            formatting.read_only = getdictvalue(ow, 'read_only', default.read_only)
+            formatting.position = getdictvalue(ow, 'position', default.position)
+            formatting.tab_color = getdictvalue(ow, 'tab_color', default.tab_color)
+            formatting.table_style.name = getdictvalue(ow.table_style, 'name', default.table_style.name)
             # formatting.table_style.show_first_column = defval_dict(ow.table_style, 'show_first_column', default.table_style.show_first_column)
-            formatting.table_style.show_last_column = defval_dict(ow.table_style, 'show_last_column',
-                                                                  default.table_style.show_last_column)
-            formatting.table_style.show_row_stripes = defval_dict(ow.table_style, 'show_row_stripes',
-                                                                  default.table_style.show_row_stripes)
+            formatting.table_style.show_last_column = getdictvalue(ow.table_style, 'show_last_column',
+                                                                   default.table_style.show_last_column)
+            formatting.table_style.show_row_stripes = getdictvalue(ow.table_style, 'show_row_stripes',
+                                                                   default.table_style.show_row_stripes)
             # if 'data' in ow:
             #     formatting.data = ow.data
             # formatting.table_style.show_column_stripes = defval_dict(ow.table_style, 'show_column_stripes', default.table_style.show_column_stripes)
@@ -178,56 +178,9 @@ class Parser(object):
             msg - printable message
             entries - additional name-value pairs
             """
-            vals = defval_dict(self._errors, label, [])
+            vals = getdictvalue(self._errors, label, [])
             vals.append(Box(default_box=True, sheet_name=label, field=field, msg=msg, **entries))
             self._errors[label] = vals
-
-        def get_references(model_name, field, references):
-            """
-            Validates and provides valid reference fields. In case of invalid fields will throw AttributeError. If
-            wrong models are referenced then will throw ValueError :param model_name: model name :param field: model
-            field :param references: list of reference :return:
-            """
-            ref_data = []
-            model = get_model(model_name)
-            fields = get_model_fields(model)
-            django_field_nm = [tmp for tmp in fields if lower(field) == lower(tmp)]
-            # need exact field name for de-referencing within Django model
-            if not django_field_nm:
-                raise AttributeError(f'model [{model_name}] doesnt have field [{django_field_nm}]')
-
-            django_field_nm = django_field_nm[0]
-
-            if references and not model._meta.get_field(django_field_nm).is_relation:
-                raise AttributeError(
-                    f'model [{model_name}], field [{django_field_nm}] isnt a reference field. mapper references: [{references}]')
-            elif model._meta.get_field(django_field_nm).is_relation and not references:
-                references = ["$model.id"]  # Lets add ref by ourselves, eases export and import
-
-            for ref in references:
-                ref_field = ref.rsplit('.', 1)[-1:][0]
-                if ref.strip().split('.')[0].strip() == '$model':
-                    ref_model = model._meta.get_field(django_field_nm).related_model
-                    ref_model_str = ref_model._meta.model_name
-                else:
-                    # TODO: HG: Ideally we don't need this unless we provide functionality where sheet_column_name is
-                    #  different from data_field but in that case too, we need to be able to map column_name to
-                    #  field_name which we don't have right now.
-                    ref_model_str = ref.rsplit('.', 2)[-2:][0].strip().lower() if len(
-                        ref.rsplit('.', 2)[-2:]) > 1 else None
-                    ref_model = get_model(ref_model_str)
-                    if ref_model != model._meta.get_field(django_field_nm).related_model:
-                        raise ValueError(
-                            f'Invalid model [{ref_model_str}] expected [{model._meta.get_field(django_field_nm).related_model}]')
-                fields = [f for f in get_model_fields(ref_model).keys() if
-                          lower(ref_field) == lower(f)]  # need exact field name for de-referencing within Django model
-                if ref_field != 'id' and not fields:
-                    raise ValueError(
-                        f'Invalid reference_field [{ref_field}] for field [{django_field_nm}], model [{model_name}]')
-                if ref_field != 'id':
-                    ref_field = fields[0]
-                ref_data.append((ref_model_str, ref_field))
-            return ref_data
 
         def _parse_dataset(dataset, model_name, sheet_name, ds_field) -> Box:
             # TODO: HG: Don't do inplace replace. Create separate copy of sheets, datasets, filters, default
@@ -268,7 +221,7 @@ class Parser(object):
 
                 data = dataset.data
                 dataset.data = {}
-                graph_edges = defval_dict(dataset, 'dependent_models', BoxList())
+                graph_edges = getdictvalue(dataset, 'dependent_models', BoxList())
                 for idx, datalist in enumerate(data):
                     if 'attributes' not in datalist:
                         error(sheet_name, f'{ds_field}.data[{idx}]',
@@ -276,7 +229,7 @@ class Parser(object):
                         continue
 
                     attributes = datalist['attributes']
-                    references = defval_dict(datalist, 'references', [])
+                    references = getdictvalue(datalist, 'references', [])
                     for attr in attributes:
                         logging.debug(f'     attribute [{attr}]')
                         fields = [k for k in model_fields.keys() if attr == '*' or re.findall('^' + attr, k)]
@@ -350,10 +303,10 @@ class Parser(object):
             elif isinstance(value, dict):
                 for k, v in value.items():
                     _validate_type(label, k, v, fqfn)
-            elif isinstance(value, list):  # TODO: HG: Will not work for cf.data[n].attributes
+            elif isinstance(value, list):  # TODO: HG: Will not work for cf.data[n].attributes so fix it
                 for f in value:
                     _validate_type(label, '', f, fqfn)
-            elif field not in field_types:  # TODO: HG: use supported_fields here. # Challenge with lists -- need
+            elif field not in field_types:  # TODO: HG: use supported_fields here.
                 logging.debug(f'field [{fqfn}] not in field_types for sheet [{label}]')
 
         # Validate defaults
@@ -475,7 +428,7 @@ class Parser(object):
         if not self._status:
             raise Exception(f'Ensure {self._file_name} is validated')
 
-        return defval_dict(self.parsed_sheets, sheet_name, None)
+        return getdictvalue(self.parsed_sheets, sheet_name, None)
         # TODO: HG: We have an issue to fix when we use filter on sample table and have multiple sheets exported and dependent sheet doesn't know how to link excel validation
         # e.g. compversion_latest and compversion_wo_latest -> use model 'componentversionmodel'
         #       compdependency depends upon model 'componentversionmodel' hence it needs to know which sheet to refer.

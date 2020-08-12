@@ -1,3 +1,5 @@
+from enum import Enum
+
 import django
 from box import Box
 from collections.abc import KeysView
@@ -11,6 +13,9 @@ class Registry:
     exporter = None
     importer = None
     config = None
+    options = None
+    xlwriter = None
+    xlreader = None
 
 
 class DBDataMistmatchError(Exception):
@@ -42,7 +47,7 @@ def fields_exists(datadict: {}, fields: []) -> (bool, []):
             status = False
     return status, missing
 
-def defval_dict(dict, key, default):
+def getdictvalue(dict, key, default):
     return dict.get(key, default) if dict else default
 
 def val(boxv1, v2):
@@ -124,3 +129,90 @@ def get_model(model_name: str):
         raise ValueError("model [%s] doesn't exist" % model_name)
 
     return model[0]
+
+
+
+class Issue(Enum):
+    EQUAL = 'equal'
+    NONE = 'none'
+    MAJOR = 'major'
+    MINOR = 'minor'
+
+
+class ColumnCompare:  # Column level only if conflict at column level
+    def __init__(self, issue: Issue, msg: str, field, xlsvalue, dbvalue, ref_sheet=None):
+        self.issue = issue
+        self.msg = msg  # Mostly will be empty but used in case of exception scenarios
+        self.field = field  # e.g. life_status, category
+        self.xlsvalue = xlsvalue
+        self.dbvalue = dbvalue  # value found in DB
+        self.ref_sheet = ref_sheet  # Reference to Worksheet for col source
+
+    # def __str__(self):
+    #     return json.dumps(self, default=lambda o: [i if not isinstance(Issue, i) else None for i in o.__dict__],
+    #                       sort_keys=True, indent=4)
+
+
+class RowResult:  # Row level Result
+    def __init__(self, msg: str, col: ColumnCompare):
+        self.msg = msg
+        self.cols: [ColumnCompare] = []
+        self.cols.append(col)
+
+
+class Records:  # Table level records
+    def __init__(self):
+        self.db = {}  # dict(index=dbobj) so each db table row has one dict entry
+        self.xls = {}  # dict(index=dict(of xls rows) so each xls table row has one dict entry
+        self.status = {}  # dict(index=[RowResult]) so each row represents either db table row or xls table row
+
+
+def get_references(model_name, field, references):
+    """
+    Validates and provides valid reference fields. In case of invalid fields will throw AttributeError. If
+    wrong models are referenced then will throw ValueError
+    :param model_name: model name
+    :param field: field name
+    :param references: list of reference
+    :return:
+    """
+    ref_data = []
+    model = get_model(model_name)
+    fields = get_model_fields(model)
+    django_field_nm = [tmp for tmp in fields if lower(field) == lower(tmp)]
+    # need exact field name for de-referencing within Django model
+    if not django_field_nm:
+        raise AttributeError(f'model [{model_name}] doesnt have field [{django_field_nm}]')
+
+    django_field_nm = django_field_nm[0]
+
+    if references and not model._meta.get_field(django_field_nm).is_relation:
+        raise AttributeError(
+            f'model [{model_name}], field [{django_field_nm}] isnt a reference field. mapper references: [{references}]')
+    elif model._meta.get_field(django_field_nm).is_relation and not references:
+        references = ["$model.id"]  # Lets add ref by ourselves, eases export and importer
+
+    for ref in references:
+        ref_field = ref.rsplit('.', 1)[-1:][0]
+        if ref.strip().split('.')[0].strip() == '$model':
+            ref_model = model._meta.get_field(django_field_nm).related_model
+            ref_model_str = ref_model._meta.model_name
+        else:
+            # TODO: HG: Ideally we don't need this unless we provide functionality where sheet_column_name is
+            #  different from data_field but in that case too, we need to be able to map column_name to
+            #  field_name which we don't have right now.
+            ref_model_str = ref.rsplit('.', 2)[-2:][0].strip().lower() if len(
+                ref.rsplit('.', 2)[-2:]) > 1 else None
+            ref_model = get_model(ref_model_str)
+            if ref_model != model._meta.get_field(django_field_nm).related_model:
+                raise ValueError(
+                    f'Invalid model [{ref_model_str}] expected [{model._meta.get_field(django_field_nm).related_model}]')
+        fields = [f for f in get_model_fields(ref_model).keys() if
+                  lower(ref_field) == lower(f)]  # need exact field name for de-referencing within Django model
+        if ref_field != 'id' and not fields:
+            raise ValueError(
+                f'Invalid reference_field [{ref_field}] for field [{django_field_nm}], model [{model_name}]')
+        if ref_field != 'id':
+            ref_field = fields[0]
+        ref_data.append((ref_model_str, ref_field))
+    return ref_data
