@@ -102,7 +102,7 @@ def lower(data):
         return data
 
 
-def get_model_fields(model):
+def get_model_fields(model: object) -> object:
     # if not lower_case:
     model_fields = {f.name: f for f in model._meta.fields + model._meta.many_to_many} if model else None
     # else:
@@ -193,7 +193,7 @@ def get_references(model_name, field, references):
         references = ["$model.id"]  # Lets add ref by ourselves, eases export and importer
 
     for ref in references:
-        ref_field = ref.rsplit('.', 1)[-1:][0]
+        ref_field = ref.split('.', 1)[1] if ref[0] == '$' else ref
         if ref.strip().split('.')[0].strip() == '$model':
             ref_model = model._meta.get_field(django_field_nm).related_model
             ref_model_str = ref_model._meta.model_name
@@ -207,12 +207,17 @@ def get_references(model_name, field, references):
             if ref_model != model._meta.get_field(django_field_nm).related_model:
                 raise ValueError(
                     f'Invalid model [{ref_model_str}] expected [{model._meta.get_field(django_field_nm).related_model}]')
-        fields = [f for f in get_model_fields(ref_model).keys() if
-                  lower(ref_field) == lower(f)]  # need exact field name for de-referencing within Django model
-        if ref_field != 'id' and not fields:
-            raise ValueError(
-                f'Invalid reference_field [{ref_field}] for field [{django_field_nm}], model [{model_name}]')
+
+
         if ref_field != 'id':
-            ref_field = fields[0]
+            for f in ref_field.split('.'):
+                try:
+                    dbfield = [mf for mf in get_model_fields(ref_model).keys() if lower(mf) == lower(f)][0]
+                    ref_model = get_model_fields(ref_model)[dbfield].related_model
+                except KeyError as e:
+                    raise ValueError(
+                        f'Invalid reference_field [{ref_field}] for field [{django_field_nm}], model [{model_name}]. Exception: {e}')
+            if not dbfield:
+                raise ValueError(f'Invalid reference_field [{ref_field}] for field [{django_field_nm}], model [{model_name}]')
         ref_data.append((ref_model_str, ref_field))
     return ref_data

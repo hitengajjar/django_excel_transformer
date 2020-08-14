@@ -50,19 +50,25 @@ class ExportableSheet(object):
             def get_ref_data(o, refs):
                 if not o:
                     return None
-                return ' - '.join([str(getattr(o, ref_f)) for ref_f in refs])
+                value = ""
+                for ref in refs:
+                    obj = o
+                    for i in ref.split('.'):
+                        obj = getattr(obj, i)
+                    value = value + ' - ' + str(obj) if value else str(obj)
+                return value
 
             vals = []
             m2m_fields = [f.name for f in o._meta.many_to_many]
             fkey_fields = [f.name for f in o._meta.fields if f.many_to_one]
-            for field, value in data.items():
+            for field, config in data.items():
                 if field in m2m_fields:
                     # Check if references is provided by user if not then we use 'pk'
-                    ref_fields = ['pk'] if not value.references else [ref for _, ref in value.references]
+                    ref_fields = ['pk'] if not config.references else [ref for _, ref in config.references]
                     ref_objs = getattr(o, field).only(*ref_fields)
                     vals.append('\n'.join(['* ' + get_ref_data(ref_obj, ref_fields) for ref_obj in ref_objs]))
                 elif field in fkey_fields:
-                    ref_fields = ['pk'] if not value.references else [ref for _, ref in value.references]
+                    ref_fields = ['pk'] if not config.references else [ref for _, ref in config.references]
                     vals.append(get_ref_data(getattr(o, field), ref_fields))
                 else:
                     vals.append(getattr(o, field))

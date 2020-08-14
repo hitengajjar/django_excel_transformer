@@ -44,8 +44,10 @@ datasets:
     index_key: ["name"]
     data:
       - attributes: ["name", "description", "life_status"]
-      - attributes: ["runtime_type", "data_privacy_class", "category", "subcategory", "vendor"]
+      - attributes: ["runtime_type", "data_privacy_class", "category", "vendor"]
         references: ["$model.name"]
+      - attributes: ["subcategory"]
+        references: ["$model.category.name", "$model.name"]
 
   component_category:
     model_name: "panopticum.models.ComponentCategoryModel"
@@ -66,7 +68,7 @@ datasets:
     index_key: ["version", "component"]
     data:
       - attributes: ["version"]
-        references: ["$model.component", "$model.version"]  # Note we are not using $model.component.name because ComponentModel.def str() already returns 'name'
+        references: ["$model.component.name", "$model.version"]
       - attributes: ["component"]
         references: ["$model.name"]
       - attributes: ["type", "notes"]
@@ -77,7 +79,7 @@ datasets:
     data:
       - attributes: ["name", "service_name", "binary_name"]
       - attributes: ["component_version"]
-        references: ["$model.component", "$model.version"]
+        references: ["$model.component.name", "$model.version"]
       - attributes: ["location_class", "product_version", "environment", "open_ports"]
         references: ["$model.name"]
       - attributes: ["notes"]
