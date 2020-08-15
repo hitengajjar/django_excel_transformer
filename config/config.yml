@@ -27,10 +27,10 @@ defaults: # default values picked from here.
 datasets:
   comp_version:
     model_name: "panopticum.models.ComponentVersionModel"
-    index_key: ["component", "version"]
+    index_key: ["component", "version"]  # All index keys should be defined part of attributes
     data:  # exporter will export columns in order they appear here.
       - attributes: ["component"]
-        references: ["$model.name"]
+        references: ["$model.name"]  # for multi-level references provide those fields separated by . e.g. $model.category.name; see below
       - attributes: ["version"]
       - attributes: ["dev_*"]
         references: ["$model.name"]

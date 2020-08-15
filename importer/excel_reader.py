@@ -46,5 +46,5 @@ class XlsReader:
                             col_num].value.strip()
                     xl_row[col_title] = row[col_num].value
             datadict[idx] = xl_row
-        logging.debug(f"xlsrow {datadict[idx]}")
+            # logging.debug(f"xlsrow {datadict[idx]}")
         return datadict

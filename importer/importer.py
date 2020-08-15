@@ -1,14 +1,12 @@
-import copy
 import logging
 from enum import Enum
-from typing import Union, re
-import typing
+from typing import Union
+import re
 
 from box import Box, BoxList
 from django.db.models import TextField, CharField, Model
 
 from ..common import nm, Registry, ColumnCompare, Issue, RowResult, getdictvalue
-from .validator import Records1
 import attr
 
 
@@ -18,6 +16,7 @@ class Status(Enum):
     MISMATCH = 'MISMATCH'
     NO_CHANGE = 'EQUAL'
     PENDING = 'PENDING'  # pending comparison
+    CANNOT_COMPARE = 'CANNOT_COMPARE'
 
 
 class FieldType(Enum):
@@ -94,34 +93,55 @@ class ImportableSheet:
          """
 
         mismatches = BoxList()
-        if not xl_record:  # lets compare the values
+        if not xl_record:
             mismatches.append(Mismatch(field=None, type=None, status=Status.DB))
-        else:
-            # 1 - xl record fields
+        else:  # compare each field value
             for field, value in xl_record.items():
                 references = self.config_data[field].references  # TODO: HG: This can throw key error
                 if references:
                     ref_model = ""
-                    refs = Box()
-                    values = value.split(' - ')
-                    for idx, ref in enumerate(references):
-                        ref_model = ref[0]
-                        ref_field = ref[1]
-                        refs[ref_field] = values[idx]
+                    m2m_fields = [f.name for f in db_record._meta.many_to_many]
+                    values = []
+                    # fkey_fields = [f.name for f in db_record._meta.fields if f.many_to_one]
+                    if field in m2m_fields:
+                        values = [re.sub('^\* ', '', i) for i in value.rsplit('\n')]
+                    else:
+                        values.append(value)
+
+                    for v in values:
+                        refs = Box()
+                        for idx, ref in enumerate(references):  # We can have multiple references e.g. compdependency.component_version => [(componentversion, component.name), (componentversion, version)]
+                            ref_model = ref[0]
+                            ref_field = ref[1]
+                            refs[ref_field] = v.split(' - ')[idx]  # Reference values can be combination of multiple fields separated by ' - '
+
+                        # IMP: Ideally we should pass values and search for record but as of now
+                        # we have reference fields are same as reference model's index
+                        # e.g. ref field ['name - version'] will be defined as ref model's index as well
+                        #   hence it is easy to find the ref record from ref model's importable_sheet's
+                        try:
+                            ref_importer = Registry.importer.get_sheet(ref_model)
+                            if not ref_importer:
+                                if self.config_data[field].formatting.read_only:
+                                    logging.info(f'Skipping comparison for field [{field}] with value [{value}], '
+                                                 f'as its marked as read_only in config.'
+                                                 f' Cannot get importer for its model [{ref_model}]')
+                                else:
+                                    mismatches.append(Mismatch(field=field, type=type(value), status=Status.CANNOT_COMPARE,
+                                                               message=f'Cannot get importer for model [{ref_model}]'))
+                            else:
+                                record = ref_importer.get_record_dict(refs)
+                                if not record or record.status == Status.MISMATCH:
+                                    mismatches.append(Mismatch(field=field, type=type(value), status=Status.MISMATCH,
+                                                               message='referenced record has MISMATCH',
+                                                               extra_info=record))
+                        except KeyError:
+                            logging.error(
+                                f"{self.model}.{field}'s value {value} - record not available in reference model {ref_model}")
+                            mismatches.append(Box(field=field, ))
+
                         # values[idx] needs to be compared with the value in DB
 
-                    # IMP: Ideally we should pass values and search for record but as of now
-                    # we have reference fields are same as reference model's index
-                    # e.g. ref field ['name - version'] will be defined as ref model's index as well
-                    #   hence it is easy to find the ref record from ref model's importable_sheet's
-                    try:
-                        record = Registry.importer.get_sheet(ref_model).get_record_dict(refs)
-                        if record.status == Status.MISMATCH:
-                            mismatches.append(Mismatch(field=field, type=type(value), status=Status.MISMATCH, message='referenced record has MISMATCH', extra_info=record))
-                    except KeyError:
-                        logging.error(
-                            f"{self.model}.{field}'s value {value} - record not available in reference model {ref_model}")
-                        mismatches.append(Box(field=field, ))
                 elif not hasattr(db_record, field):
                     mismatches.append(Mismatch(field=field, type=type(value), status=Status.XL))
                 elif getattr(db_record, field) != value:
@@ -131,7 +151,7 @@ class ImportableSheet:
 
     def import_data(self):
         """
-           Main function that callers should invoke to import XLS data into DB.
+           Main function that callers should invoke to importer XLS data into DB.
 
            Reads XLS data and updates records in database for the respective table.
            This is generic function which relies on '_get_record()' to provide records
@@ -164,8 +184,12 @@ class ImportableSheet:
                 references = getdictvalue(getdictvalue(self.config_data, attr, None), 'references', None)
                 if references:
                     for (ref_model, ref_field) in references:
-                        value = str(getattr(getattr(dbobj, attr), ref_field)) # TODO: Multi-level references in ref_field e.g. version.component.name
-                        idx = value if not idx else idx + ' - ' + value
+                        # TODO: Handle if ref_field has multi-level fields. e.g. component.name
+                        value = ""
+                        obj = getattr(dbobj, attr)
+                        for i in ref_field.split('.'):
+                            obj = getattr(obj, i)
+                        idx = str(obj) if not idx else idx + ' - ' + str(obj)
                 else:
                     value = getattr(dbobj, attr)
                     idx = value if not idx else idx + ' - ' + value
@@ -184,8 +208,9 @@ class ImportableSheet:
 
     def get_record_dict(self, datadict: Box):
         # check if datadict has index keys if yes then get_record_idx(self, idx) else scan through all records :(
-        if not set(self.index_keys) - datadict.keys():
-            return self.get_record_idx(self.get_index(datadict))
+        dd = Box({k.split('.')[0]: v for k, v in datadict.items()}) # for comparing the index keys we don't need to care about multi-level fields
+        if not set(self.index_keys) - dd.keys():
+            return self.get_record_idx(self.get_index(dd))
         else:
             # TODO: See how to improve performance
             for _, record in self.records.items():
@@ -198,14 +223,14 @@ class ImportableSheet:
                     r1 = record.xl_record
                     r2 = record.db_record
                 match = True
-                for key, value in datadict.items():
+                for key, value in dd.items():
                     if getattr(r1, key) != value:
                         match = False
                         break
                 if match:
                     return record
                 elif r2:  # now check r2
-                    for key, value in datadict.items():
+                    for key, value in dd.items():
                         if getattr(r2, key) != value:
                             match = False
                             break
@@ -271,6 +296,9 @@ class Importer:
         validate_options_type(options, bool)
         validate_options_conflict(options)
         return Importer(importablemodels=Box(default_box=True))
+
+    def get_sheet(self, name):
+        return self.importablemodels[name]
 
     def import_sheets(self, options):
         for sheet_nm in Registry.parser.get_sheet_names(export_sequence=True):
