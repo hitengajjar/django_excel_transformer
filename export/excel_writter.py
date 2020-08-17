@@ -98,7 +98,7 @@ class XlsWriter(object):
                                         formula1="{0}!{1}:{2}".format(quote_sheetname(cr.sheet_name),
                                                                       cr.startcell,
                                                                       cr.endcell))
-                    dv.add('{0}2:{0}{1}'.format(cf.column_number, len(data)))
+                    dv.add('{0}2:{0}{1}'.format(cf.column_number, len(data) + 1))
                     sheet.add_data_validation(dv)
                 if tf.formatters.alignment.wrapText is True:
                     for cell in sheet[cf.column_number]:
