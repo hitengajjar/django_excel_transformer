@@ -1,8 +1,9 @@
 import logging
-from enum import Enum
-from typing import Union
 import re
-
+import pandas as pd
+from enum import Enum, IntEnum
+from django.conf import settings
+from datetime import datetime
 from box import Box, BoxList
 from django.db.models import TextField, CharField, Model
 
@@ -10,7 +11,14 @@ from ..common import nm, Registry, ColumnCompare, Issue, RowResult, getdictvalue
 import attr
 
 
-class Status(Enum):
+class LOD(IntEnum):
+    ALL_FULL = 0 # "ALL"  # Complete report with list of records including DB and XL records
+    ALL_MID = 1 # "ALL without data"  # List of records with indexkey information but no DB and XL records
+    MISMATCH = 2 # "Only Mismatch"  # List of mismatch records including DB and XL records
+    SUMMARY = 3 # "Summary"  # stats only - total_records, same_records, xl_only, db_only, no_change, miscellaneous
+
+
+class Status(str, Enum):
     XL = 'XL'
     DB = 'DB'
     MISMATCH = 'MISMATCH'
@@ -19,7 +27,7 @@ class Status(Enum):
     CANNOT_COMPARE = 'CANNOT_COMPARE'
 
 
-class FieldType(Enum):
+class FieldType(str, Enum):
     CONCRETE = 'CONCRETE'
     M2M = 'M2M'
     FKEY = 'FKEY'
@@ -55,14 +63,14 @@ class Mismatch:  # Per field mismatch object
 
 @attr.s(auto_attribs=True)
 class ImportableSheet:
-    records: Box
-    # defaults: dict
     name: str
     config_filters: Box
     model: Model
     config_data: Box
     index_keys: BoxList
     records: Box
+    total_db_records: int
+    total_xl_records: int
 
     @classmethod
     def from_sheetdata(cls, sheetdata: Box):
@@ -75,14 +83,14 @@ class ImportableSheet:
         model = getdictvalue(getdictvalue(sheetdata, 'dataset', None), 'model', None)
         index_keys = getdictvalue(getdictvalue(sheetdata, 'dataset', None), 'index_key', None)
         obj = cls(name=sheet_nm, model=model, config_data=data, config_filters=filters,
-                  index_keys=index_keys, records=Box(default_box=True))
+                  index_keys=index_keys, records=Box(default_box=True), total_db_records=0, total_xl_records=0)
         return obj
 
-    def load_data(self):
+    def load_xl(self):
         xl_data = Registry.xlreader.get_xldata(self.name, self.index_keys)
         for idx, record in xl_data.items():
             self.records[idx] = Record(xl_record=record, status=Status.XL)
-        return True
+        self.total_xl_records = len(self.records)
 
     def compare(self, xl_record, db_record):
         """ Compares xl record vs db record.
@@ -94,7 +102,7 @@ class ImportableSheet:
 
         mismatches = BoxList()
         if not xl_record:
-            mismatches.append(Mismatch(field=None, type=None, status=Status.DB))
+            mismatches.append(Mismatch(field="", type=None, status=Status.DB, message="", extra_info=None))
         else:  # compare each field value
             for field, value in xl_record.items():
                 references = self.config_data[field].references  # TODO: HG: This can throw key error
@@ -110,10 +118,13 @@ class ImportableSheet:
 
                     for v in values:
                         refs = Box()
-                        for idx, ref in enumerate(references):  # We can have multiple references e.g. compdependency.component_version => [(componentversion, component.name), (componentversion, version)]
-                            ref_model = ref[0]
+                        for idx, ref in enumerate(
+                                references):  # We can have multiple references e.g. compdependency.component_version => [(componentversion, component.name), (componentversion, version)]
+                            ref_model = ref[
+                                0]  # We are good to use the ref[0] and keep overwriting it becoz now we only support $model starting refs. TODO: below logic complelets needs to be re-written to support model names in reference
                             ref_field = ref[1]
-                            refs[ref_field] = v.split(' - ')[idx]  # Reference values can be combination of multiple fields separated by ' - '
+                            refs[ref_field] = v.split(' - ')[
+                                idx]  # Reference values can be combination of multiple fields separated by ' - '
 
                         # IMP: Ideally we should pass values and search for record but as of now
                         # we have reference fields are same as reference model's index
@@ -127,29 +138,34 @@ class ImportableSheet:
                                                  f'as its marked as read_only in config.'
                                                  f' Cannot get importer for its model [{ref_model}]')
                                 else:
-                                    mismatches.append(Mismatch(field=field, type=type(value), status=Status.CANNOT_COMPARE,
-                                                               message=f'Cannot get importer for model [{ref_model}]'))
+                                    mismatches.append(
+                                        Mismatch(field=field, type=type(value), status=Status.CANNOT_COMPARE,
+                                                 message=f'Cannot get importer for model [{ref_model}]',
+                                                 extra_info=None))
                             else:
-                                record = ref_importer.get_record_dict(refs)
+                                record = ref_importer.get_record_from_dict(refs)
                                 if not record or record.status == Status.MISMATCH:
                                     mismatches.append(Mismatch(field=field, type=type(value), status=Status.MISMATCH,
-                                                               message='referenced record has MISMATCH',
-                                                               extra_info=record))
-                        except KeyError:
-                            logging.error(
-                                f"{self.model}.{field}'s value {value} - record not available in reference model {ref_model}")
-                            mismatches.append(Box(field=field, ))
-
-                        # values[idx] needs to be compared with the value in DB
-
+                                                               message='no referenced record found' if not record else 'referenced record has MISMATCH',
+                                                               extra_info=Box(reference_record=record)))
+                        except KeyError as e:
+                            msg = f"{self.model}.{field}'s value {value} - record not available in reference model" \
+                                  f" {ref_model}. Exception: {e}"
+                            logging.error(msg)
+                            mismatches.append(Mismatch(field=field, type=type(value), status=Status.MISMATCH,
+                                                       message=msg, extra_info=None))
                 elif not hasattr(db_record, field):
-                    mismatches.append(Mismatch(field=field, type=type(value), status=Status.XL))
-                elif getattr(db_record, field) != value:
-                    mismatches.append(Mismatch(field=field, type=type(value), status=Status.MISMATCH))
+                    mismatches.append(Mismatch(field=field, type=type(value), status=Status.XL,
+                                               message=f'field: "{field}" doesnt exist in DB',
+                                               extra_info=None))
+                elif getattr(db_record, field) != type(getattr(db_record, field))(value):
+                    mismatches.append(Mismatch(field=field, type=type(value), status=Status.MISMATCH,
+                                               message=f'values differ, dbvalue: "{getattr(db_record, field)}" and xlsvalue: "{value}"',
+                                               extra_info=None))
 
         return mismatches
 
-    def import_data(self):
+    def load_compare(self):
         """
            Main function that callers should invoke to importer XLS data into DB.
 
@@ -159,8 +175,9 @@ class ImportableSheet:
 
         # 1. Read xls table and keep them inside records[idx].xl_record
         # 3. compare results and keep them inside records.compare_status
-        self.load_data()
+        self.load_xl()
         dbobjs = self.model.objects.all()
+        self.total_db_records = len(dbobjs)
         for dbobj in dbobjs:
             idx = self.get_db_index(dbobj)
             record = self.records.setdefault(idx, Record(db_record=dbobj, status=Status.DB))
@@ -206,37 +223,86 @@ class ImportableSheet:
     def get_record_idx(self, idx):
         return self.records.get(idx, None)
 
-    def get_record_dict(self, datadict: Box):
+    def get_record_from_dict(self, datadict: Box):
         # check if datadict has index keys if yes then get_record_idx(self, idx) else scan through all records :(
-        dd = Box({k.split('.')[0]: v for k, v in datadict.items()}) # for comparing the index keys we don't need to care about multi-level fields
-        if not set(self.index_keys) - dd.keys():
+        dd = Box({k.split('.')[0]: v for k, v in
+                  datadict.items()})  # for comparing the index keys we don't need to care about multi-level fields
+        if not set(self.index_keys) - dd.keys():  # IMP: for multi-level reference fields excel field name is always
             return self.get_record_idx(self.get_index(dd))
         else:
             # TODO: See how to improve performance
+
+            def xl_match(key, value):
+                if getattr(record.xl_record, key.split('.')[
+                    0]) == value:  # we only support first field name for multi-level field references (if its a reference field)
+                    return True
+                return False
+
+            def db_match(key, value):
+                obj = record.db_record
+                for i in key.split('.'):
+                    obj = getattr(obj, i)
+                if obj == type(obj)(value):
+                    return True
+                return False
+
             for _, record in self.records.items():
-                r1 = r2 = None  # r2 only in case of Mismatch
                 if record.status in [Status.XL, Status.NO_CHANGE]:
-                    r1 = record.xl_record
-                elif record.status == Status.DB:
-                    r1 = record.db_record
-                elif record.status == Status.MISMATCH:
-                    r1 = record.xl_record
-                    r2 = record.db_record
-                match = True
-                for key, value in dd.items():
-                    if getattr(r1, key) != value:
-                        match = False
-                        break
-                if match:
+                    for key, value in datadict.items():
+                        if not xl_match(key, value):
+                            return None
                     return record
-                elif r2:  # now check r2
-                    for key, value in dd.items():
-                        if getattr(r2, key) != value:
-                            match = False
-                            break
-                    if match:
-                        return record
+                elif record.status == Status.DB:
+                    for key, value in datadict.items():  # TODO: HG: IMP: handle index key with . e.g. 'component.name'
+                        if not db_match(key, value):
+                            return None
+                    return record
+                elif record.status == Status.MISMATCH:
+                    for key, value in datadict.items():
+                        if not xl_match(key, value):
+                            if not db_match(key, value):
+                                return None
+                    return record
             return None
+
+    def get_report(self, lod: LOD) -> str:
+        """
+        Generates report data and return back
+        :param lod: Level of details. See class LOD
+        :return: str
+        """
+        keys = BoxList()
+        statuses = BoxList()
+        mismatches = BoxList()
+        xl_records = BoxList()
+        db_records = BoxList()
+        issue_cntr = 0
+
+        for (i, r) in self.records.items():
+            if lod in (LOD.ALL_FULL, LOD.ALL_MID) or \
+                    lod == LOD.MISMATCH and r.status != Status.NO_CHANGE:
+                keys.append(i)
+                statuses.append(r.status)
+                mismatches.append(r.mismatches)
+
+            if lod == LOD.ALL_FULL or \
+                    lod == LOD.MISMATCH and r.status != Status.NO_CHANGE:
+                xl_records.append(r.xl_record if r.xl_record else None)
+                db_records.append({i: v for i, v in vars(r.db_record).items() if i != '_state'} if r.db_record else None)
+
+            if r.status != Status.NO_CHANGE:
+                issue_cntr+=1
+
+        html_text = f'<p>Total xl_records: {self.total_xl_records}</p><p>Total DB records: {self.total_db_records}</p><p>Number of Issues: {issue_cntr}</p>'
+        if lod != LOD.SUMMARY:
+            data = dict({f'key{self.index_keys}': keys, 'status': statuses, 'mistmatch': mismatches})
+            if xl_records:
+                data['xl_record'] = xl_records
+            if db_records:
+                data['db_record'] = db_records
+            html_text += pd.DataFrame(data).to_html(formatters={'status': lambda x: '<b>' + x + '</b>' if x != Status.NO_CHANGE else f'{x}'})
+        html_text += '</p>'
+        return html_text
 
     def create_record(self, datadict):
         """ Creates or Updates record """
@@ -248,33 +314,6 @@ class ImportableSheet:
             filter[field] = datadict[field]
         # TODO: HG: Need to fetch KEY_ID for M2M and FKEY attributes
         self.model.update_or_create(filter, datadict)  # We always expect 1 record per filter
-
-    # def get_record1(self, datadict, ref_check=True) -> Union[object, None]:
-    #     """ Provides DB record either cached or using '_alloc_get_db_object()'
-    #     :param datadict: should be values with which DB record should be created
-    #     :param ref_check: specifies if get_record() should only do reference check. In future,use it to create default object
-    #            if record doesn't exists in DB.
-    #     :return: None if record not found and ref_check=True else db object
-    #     """
-    #     logging.debug("Table [%s], with datadict [%s]" % (nm(self._model), datadict))
-    #     if not datadict:
-    #         raise Exception("[datadict] missing for table [%s]" % (nm(self._model)))
-    #
-    #     index = self._xl_index_key(datadict)
-    #
-    #     if index in self.records.db:
-    #         logging.debug("Found cached entry for table [%s], with index [%s]" % (nm(self._model), index))
-    #         return self.records.db[index]
-    #     else:
-    #         logging.debug("No cached entry, getting from DB for table [%s], "
-    #                       "with index [%s]" % (nm(self._model), index))
-    #         obj = self._alloc_get_dbobject(datadict=datadict,  # if ref_check else self._defaults
-    #                                        ref_check=ref_check)
-    #         if obj:
-    #             self.records.db[self._db_index_key(obj)] = obj
-    #             # HG: Possibility is less we will come here and still get a DB record.
-    #             # because as per current logic, we would already have fetched DB records beforehand
-    #         return obj
 
 
 @attr.s(auto_attribs=True)
@@ -301,10 +340,25 @@ class Importer:
         return self.importablemodels[name]
 
     def import_sheets(self, options):
+        datetime_str = datetime.now().strftime("%d-%m-%y %Ih.%Mm.%Ss%p")
+        excel_file = options['xls_file']
+        db_connection = settings.DATABASES.get('default')['NAME']
+        cmd_opts = options
+        html_text = f'<h2>Importer Report {datetime_str};</h2><p>Level of Details: {options["lod"]}</p>' \
+                    f'<p>Excel file: {excel_file}</p><p>Database: {db_connection}</p><p>Command line option: {cmd_opts}</p><p>'
+
         for sheet_nm in Registry.parser.get_sheet_names(export_sequence=True):
             config = Registry.parser.get_sheet(sheet_nm)
             model_name = config.dataset.model_name.rsplit('.')[-1]
-            self.importablemodels[model_name] = ImportableSheet.from_sheetdata(config)
-            self.importablemodels[model_name].import_data()
-
+            self.importablemodels[model_name] = importable_sheet = ImportableSheet.from_sheetdata(config)
             logging.info(f'Validating sheet [{sheet_nm}]')
+            importable_sheet.load_compare()
+            excel_tab = importable_sheet.name
+            db_table = nm(importable_sheet.model)
+            html_text += f'<br></p><hr><h3>{model_name}</h3><p>Excel tab: {excel_tab}</p><p>DB Table: {db_table}</p><p>'
+            html_text += importable_sheet.get_report(int(options["lod"]))
+            html_text += '</p>'
+        html_file = open(f'DET-report_{datetime_str}.html', 'w')
+        html_text += f'<hr><p><em>This report is generated by&nbsp;</em><a href="https://github.com/hitengajjar/django-excel-transformer"><em>django-excel-transformer</em></a></p>'
+        html_file.write(html_text)
+        html_file.close()
