@@ -98,12 +98,22 @@ datasets:
     data:
       - attributes: ["name"]
 
+  datacenter:
+    model_name: "panopticum.models.DatacenterModel"
+    index_key: ["name"]
+    data:
+      - attributes: ["*"]
+        references: ["$model.name"]
+      - attributes: ["components_deployments"]  # this will override the field loaded by previous '*'
+        references: ["$model.component_version.component.name", "$model.component_version.version",
+                     "$model.location_class.name", "$model.product_version.name", "$model.environment.name"]
+
   _multi_tables:  # Special case, should be used with special name
     model_names: ["panopticum.models.ORMModel", "panopticum.models.FrameworkModel","panopticum.models.ComponentDataPrivacyClassModel",
                   "panopticum.models.ComponentRuntimeTypeModel","panopticum.models.CountryModel","panopticum.models.DatabaseVendorModel",
                   "panopticum.models.DeploymentEnvironmentModel", "panopticum.models.DeploymentLocationClassModel",
                   "panopticum.models.LoggerModel", "panopticum.models.ProductFamilyModel", "panopticum.models.SoftwareVendorModel",
-                  "panopticum.models.TCPPortModel", "panopticum.models.DatacenterModel"]
+                  "panopticum.models.TCPPortModel"]
     index_key: ["name"]
     data:
       - attributes: ["*"]

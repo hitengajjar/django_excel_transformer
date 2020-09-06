@@ -71,6 +71,8 @@ def nm(class_name) -> str:
     :param class_name:
     :return: str version of class_name
     """
+    if not class_name:
+        return 'None'
     if isinstance(class_name, str):
         return class_name
     else:

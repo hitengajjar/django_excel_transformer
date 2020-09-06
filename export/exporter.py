@@ -65,7 +65,7 @@ class ExportableSheet(object):
                 if field in m2m_fields:
                     # Check if references is provided by user if not then we use 'pk'
                     ref_fields = ['pk'] if not config.references else [ref for _, ref in config.references]
-                    ref_objs = getattr(o, field).only(*ref_fields)
+                    ref_objs = getattr(o, field).all()
                     vals.append('\n'.join(['* ' + get_ref_data(ref_obj, ref_fields) for ref_obj in ref_objs]))
                 elif field in fkey_fields:
                     ref_fields = ['pk'] if not config.references else [ref for _, ref in config.references]
@@ -77,7 +77,6 @@ class ExportableSheet(object):
 
         logging.debug(f'Fetching data for [{self.name}]')
         self.dbdata = []
-        dbobjs = None
         if self.filters:
             # TODO: HG: Check for filters and act accordingly.
             # self.model.objects.only(*self.data.keys()).order_by("-order")[0]
