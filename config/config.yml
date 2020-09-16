@@ -246,12 +246,23 @@ sheets:
         - attributes: ["family"]
           chars_wrap: 30
 
+  - sheet_name: "DataCenters"
+    dataset: datacenter
+    formatting:
+      position: 9
+      read_only: true
+      data:
+        - attributes: ["grafana", "metrics", "info"]
+          chars_wrap: 30
+        - attributes: ["components_deployments"]
+          chars_wrap: 80
+
   - sheet_name: "*" # use model_name as name
     dataset: _multi_tables
     formatting:
       position: -1  # Append
       read_only: true
       data:
-        - attributes: ["components_deployments", "grafana", "metrics", "info"]
+        - attributes: ["info"]
           chars_wrap: 30
 

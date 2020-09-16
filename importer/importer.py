@@ -1,5 +1,5 @@
 import logging
-import re
+import re, json
 from typing import Union
 
 import pandas as pd
@@ -54,6 +54,31 @@ class Record:
     status: Status = Status.PENDING
     mismatches: BoxList = None  # Array of mismatch
 
+    def to_json(self, field):
+        """
+        convert given field to json.
+        :param field: string field. Applicable fields are "self", "xl_record", "db_record", "mismatches"
+        :return: str
+        """
+        if field == 'self':
+            obj = Box(xl_records=self.to_json("xl_record"),
+                      db_records=self.to_json("db_record"),
+                      mismatches=self.to_json("mismatches"),
+                      status=self.status)
+            return json.dumps(obj, sort_keys=True, default=str)
+        elif field == 'xl_record':
+            return self.xl_record.to_json() if self.xl_record else None
+        elif field == 'db_record':
+            db_data = {i: v for i, v in vars(self.db_record).items() if i != '_state'} if self.db_record else None
+            return json.dumps(db_data, sort_keys=True, default=str) if db_data else None
+        elif field == 'mismatches':
+            json_str = '{"mismatches": ['
+            for m in self.mismatches:
+                json_str += m.to_json()
+                json_str += ','
+            json_str += ']}'
+            return json_str
+
 
 @attr.s(auto_attribs=True)
 class Mismatch:  # Per field mismatch object
@@ -62,6 +87,9 @@ class Mismatch:  # Per field mismatch object
     status: Status
     message: str
     extra_info: object
+
+    def to_json(self):
+        return json.dumps(self.__dict__, sort_keys=True, default=str)
 
 
 @attr.s(auto_attribs=True)
@@ -128,8 +156,10 @@ class ImportableSheet:
                 references = self.config_data[f].references  # TODO: HG: This can throw key error
                 if references:
                     ref_model = ""
-                    values = []
-                    values.append([re.sub('^\* ', '', i) for i in value.rsplit('\n')] if f in m2m_fields else value)
+                    if f in m2m_fields:
+                        values = [re.sub('^\* ', '', i) for i in value.rsplit('\n')]
+                    else:
+                        values = [value]
 
                     for v in values:
                         refs = Box()
@@ -164,28 +194,30 @@ class ImportableSheet:
                                                  f' Cannot get importer for its model [{ref_model}]')
                                 else:
                                     mismatches.append(
-                                        Mismatch(field=f, type=type(value), status=Status.CANNOT_COMPARE,
+                                        Mismatch(field=f, type=nm(type(value)), status=Status.CANNOT_COMPARE,
                                                  message=f'Cannot get importer for model [{ref_model}]',
                                                  extra_info=None))
                             else:
-                                record = ref_importer.get_record_from_dict(refs)
-                                refobjs.setdefault(f, []).append(record)
-                                if not record or record.status == Status.MISMATCH:
-                                    mismatches.append(Mismatch(field=f, type=type(value), status=Status.MISMATCH,
-                                                               message='no referenced record found' if not record else 'referenced record has MISMATCH',
-                                                               extra_info=Box(reference_record=record)))
+                                ref_obj = ref_importer.get_record_from_dict(refs)
+                                refobjs.setdefault(f, []).append(ref_obj)
+                                if not ref_obj or ref_obj.status == Status.MISMATCH:
+                                    mismatches.append(Mismatch(field=f, type=nm(type(value)), status=Status.MISMATCH,
+                                                               message=f'no referenced record found; record wont be '
+                                                                       f'create/updated in DB' if not ref_obj else
+                                                               'referenced record has MISMATCH',
+                                                               extra_info=Box(reference_record=ref_obj)))
                         except KeyError as e:
                             msg = f"{nm(self.model)}.{f}'s value {value} - record not available in reference model" \
                                   f" {ref_model}. Exception: {e}"
                             logging.error(msg)
-                            mismatches.append(Mismatch(field=f, type=type(value), status=Status.MISMATCH,
+                            mismatches.append(Mismatch(field=f, type=nm(type(value)), status=Status.MISMATCH,
                                                        message=msg, extra_info=None))
                 elif db_record and not hasattr(db_record, f):
-                    mismatches.append(Mismatch(field=f, type=type(value), status=Status.XL,
+                    mismatches.append(Mismatch(field=f, type=nm(type(value)), status=Status.XL,
                                                message=f'field: "{f}" doesnt exist in DB',
                                                extra_info=None))
                 elif db_record and getattr(db_record, f) != type(getattr(db_record, f))(value):
-                    mismatches.append(Mismatch(field=f, type=type(value), status=Status.MISMATCH,
+                    mismatches.append(Mismatch(field=f, type=nm(type(value)), status=Status.MISMATCH,
                                                message=f'values differ, dbvalue: "{getattr(db_record, f)}" and xlsvalue: "{value}"',
                                                extra_info=None))
 
@@ -235,10 +267,9 @@ class ImportableSheet:
             report.list_idx[i] = cnt
             report.keys.append(i)
             report.statuses.append(r.status)
-            report.mismatches.append(r.mismatches)
-            report.xl_records.append(r.xl_record.to_json() if r.xl_record else None)
-            report.db_records.append(
-                {i: v for i, v in vars(r.db_record).items() if i != '_state'} if r.db_record else None)
+            report.mismatches.append(r.to_json("mismatches"))
+            report.xl_records.append(r.to_json("xl_record"))
+            report.db_records.append(r.to_json("db_record"))
             if r.status != Status.NO_CHANGE:
                 report.issue_cnt += 1
 
@@ -286,8 +317,6 @@ class ImportableSheet:
             k = k.split('.')[0]
             dd[k] = dd.get(k) + ' - ' + v if k in dd else v  # append v to existing dd[k] if k already part of dd
 
-        # dd = Box({k.split('.')[0]: v for k, v in
-        #           datadict.items()})  # for comparing the index keys we don't need to care about multi-level fields
         if not set(self.index_keys) - dd.keys():  # IMP: multi-level reference fields excel field name is always same
             return self.get_record_idx(self.get_index(dd))
         else:
@@ -350,7 +379,8 @@ class ImportableSheet:
                 db_records.append(report.db_records[cnt] if lod == LOD.ALL_FULL or (
                         lod == LOD.MISMATCH and report.statuses[cnt] != Status.NO_CHANGE) else '-')
 
-        html_text = f'<p>Total xl_records: {self.total_xl_records}</p><p>Total DB records: {self.total_db_records}</p><p>Number of Issues: {report.issue_cnt}</p>'
+        html_text = f'<p>Total xl_records: {self.total_xl_records}</p><p>Total DB records: {self.total_db_records}</p>'\
+                    f'<p>Number of Issues: {report.issue_cnt}</p>'
         if lod != LOD.SUMMARY:
             data = dict({f'key{self.index_keys}': keys, 'status': statuses, 'db_update': None,
                          'mismatch': mismatches})
@@ -378,46 +408,61 @@ class ImportableSheet:
                 # We cannot create record if FKEY doesn't exist in referenced DB table or record has MISMATCH
                 datadict = Box(default_box=False)
                 filter = Box()
+                invalid_ref = False
+                for f, refobj in r.refobjs.items():
+                    if not refobj or None in refobj:
+                        v = ','.join([re.sub('^\* ', '', i) for i in r.xl_record[f].rsplit('\n')])
+                        logging.error(
+                            f" {nm(self.model)} - Wont update record [{i}] since "
+                            f"[{f}={v}] has missing "
+                            f"reference object. Ensure reference record exists either in DB or XLS")
+                        invalid_ref = True
+                        break
+
+                if invalid_ref:
+                    continue
+
                 for f in self.index_keys:
                     if not r.refobjs or f not in r.refobjs:
                         filter[f] = getattr(r.xl_record, f)
                     else:
                         filter[f + '_id'] = r.refobjs[f][0].db_record.pk
 
-                ref_mismatch = False
                 for f, v in r.xl_record.items():
                     if f in concrete_fields:
                         datadict[f] = v
                     elif r.refobjs:
                         if not force_update and r.refobjs[f].status != Status.NO_CHANGE:
                             logging.info(
-                                f"{nm(self.model)}. update_db() - Won't update record {i} since {f} is ref field and "
-                                f"it has a change. Use --force_upate to update this record.")
+                                f" {nm(self.model)} - Wont update record [{i}] since [{f}={r.xl_record[f]}] is ref "
+                                f"field and it has a change. Use --force_update to update reference and this record.")
                             logging.info(f'Mismatch Reference Object - {r.refobjs[f]}')
-                            ref_mismatch = True
+                            invalid_ref = True
                             break
-                        elif f in fkey_fields and (force_update or r.refobjs[f][0].status == Status.MISMATCH):
+                        elif (f in fkey_fields) and (f in r.refobjs)\
+                                and (force_update or r.refobjs[f][0].status == Status.MISMATCH):
                             datadict[f + '_id'] = r.refobjs[f][0].db_record.pk
 
-                if ref_mismatch:
+                    else:
+                        logging.error(f" {nm(self.model)} - Wont update record [{i}] since [{f}={r.xl_record[f]}] "
+                                      f"is invalid (its neither concrete neither has reference")
+                        invalid_ref = True
+                        break
+
+                if invalid_ref:
                     continue
 
                 if force_update or r.status == Status.XL:  # don't update DB if record MISMATCH & force_update is False
                                                             # filter should always return 1 object if exists else 0
                     (dbobj, created) = self.model.objects.update_or_create(**filter, defaults=datadict)
-                    logging.debug(f'{nm(self.model)}: {"created" if created else "updated"} object: {dbobj}')
                     r.db_record = dbobj
                     if r.refobjs:
                         for f in r.refobjs.keys() & m2m_fields:
-                            if r.refobjs[f][0].db_record:
-                                getattr(dbobj, f).set([ro.db_record for ro in r.refobjs[f]])  # set will add all the records
-                            else:
-                                logging.info(
-                                    f"{nm(self.model)}. update_db() - ref_field {f} doesn't have DB record hence skipping "
-                                    f"update this field")
+                            getattr(dbobj, f).set([ro.db_record for ro in r.refobjs[f]]) # set will add all the records
 
                     dbobj.save()
                     r.status = Status.NO_CHANGE
+                    logging.debug(f' {nm(self.model)}: {"created" if created else "updated"} object: {dbobj}')
                 else:
                     err_records.append(r)
 
@@ -437,7 +482,7 @@ class Importer:
         def validate_options_type(opts: Box, t):
             for o in opts.values():
                 if not isinstance(o, t):
-                    raise Exception(f'[{o}] option should be of type [{t}], instead received type: [{type(o)}]')
+                    raise Exception(f' [{o}] option should be of type [{t}], instead received type: [{type(o)}]')
 
         def validate_options_conflict(opts: Box):
             if opts.dry_run and (db_force_update or db_update):
