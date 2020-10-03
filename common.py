@@ -214,12 +214,13 @@ def get_references(model_name, field, references):
         if ref_field != 'id':
             for f in ref_field.split('.'):
                 try:
-                    dbfield = [mf for mf in get_model_fields(ref_model).keys() if lower(mf) == lower(f)][0]
-                    ref_model = get_model_fields(ref_model)[dbfield].related_model
+                    dbfield = [mf for mf in get_model_fields(ref_model).keys() if lower(mf) == lower(f)]
+                    if not dbfield:
+                        raise ValueError(
+                            f'Invalid reference_field [{ref_field}] for field [{django_field_nm}], model [{model_name}]')
+                    ref_model = get_model_fields(ref_model)[dbfield[0]].related_model
                 except KeyError as e:
                     raise ValueError(
                         f'Invalid reference_field [{ref_field}] for field [{django_field_nm}], model [{model_name}]. Exception: {e}')
-            if not dbfield:
-                raise ValueError(f'Invalid reference_field [{ref_field}] for field [{django_field_nm}], model [{model_name}]')
         ref_data.append((ref_model_str, ref_field))
     return ref_data
