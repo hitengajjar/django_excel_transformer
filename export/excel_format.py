@@ -94,7 +94,7 @@ class ColFormat(Formatter):
             formatters.dv = col_data_fmtting.get('dv', False)
             comment = col_data_fmtting.get('comment', None)
             if comment:
-                formatters.comment = Comment(text=comment.text, author=comment.author, width=comment.width, height=comment.height)
+                formatters.comment = Comment(text=comment.text, author=comment.author, width=comment.width_len, height=comment.height_len)
 
         tmp_ref = col_data.get('references', None)
         if tmp_ref:
