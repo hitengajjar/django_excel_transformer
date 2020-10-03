@@ -433,9 +433,10 @@ class ImportableSheet:
                         datadict[f] = v
                     elif r.refobjs:
                         if not force_update and r.refobjs[f].status != Status.NO_CHANGE:
-                            logging.info(
-                                f" {nm(self.model)} - Wont update record [{i}] since [{f}={r.xl_record[f]}] is ref "
-                                f"field and it has a change. Use --force_update to update reference and this record.")
+                            v = ','.join([re.sub('^\* ', '', i) for i in r.xl_record[f].rsplit('\n')])
+                            logging.error(
+                                f" {nm(self.model)} - Wont update record [{i}] since "
+                                f"[{f}={v}] has a change. Use --force_update to update reference and this record.")
                             logging.info(f'Mismatch Reference Object - {r.refobjs[f]}')
                             invalid_ref = True
                             break
@@ -444,8 +445,9 @@ class ImportableSheet:
                             datadict[f + '_id'] = r.refobjs[f][0].db_record.pk
 
                     else:
-                        logging.error(f" {nm(self.model)} - Wont update record [{i}] since [{f}={r.xl_record[f]}] "
-                                      f"is invalid (its neither concrete neither has reference")
+                        v = ','.join([re.sub('^\* ', '', i) for i in r.xl_record[f].rsplit('\n')])
+                        logging.error(f" {nm(self.model)} - Wont update record [{i}] since [{f}={v}] "
+                                      f"is invalid (its neither concrete neither has reference)")
                         invalid_ref = True
                         break
 
