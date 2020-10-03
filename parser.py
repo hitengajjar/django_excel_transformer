@@ -179,8 +179,10 @@ class Parser(object):
             entries - additional name-value pairs
             """
             vals = getdictvalue(self._errors, label, [])
-            vals.append(Box(default_box=True, sheet_name=label, field=field, msg=msg, **entries))
+            err = Box(default_box=True, sheet_name=label, field=field, msg=msg, **entries)
+            vals.append(err)
             self._errors[label] = vals
+            logging.error(err)
 
         def _parse_dataset(dataset, model_name, sheet_name, ds_field) -> Box:
             # TODO: HG: Don't do inplace replace. Create separate copy of sheets, datasets, filters, default
@@ -236,6 +238,7 @@ class Parser(object):
                         if not fields:
                             error(sheet_name, f'{ds_field}.data[{idx}].attributes[{attr}]',
                                   f'No fields defined for  model [{model_name}]')
+                            logging.error(error)
                             continue
                         dataset.model = model
                         if attr == '*' and 'model_names' in dataset:
@@ -349,8 +352,7 @@ class Parser(object):
                             dup_sheet.sheet_name = model_name
                         dup_sheet.dataset = _parse_dataset(dataset=copy.deepcopy(ds), model_name=model_name,
                                                            sheet_name=dup_sheet.sheet_name, ds_field=ds_field)
-                        self.parsed_sheets[dup_sheet.sheet_name] = dup_sheet
-
+                        # self.parsed_sheets[dup_sheet.sheet_name] = dup_sheet
                         # We can have multiple sheets for same model with different filters.
                         sheet_model_map[model_name.lower()].append(dup_sheet.sheet_name)
 
@@ -367,6 +369,7 @@ class Parser(object):
                         # Validate and update table formatting
                         _validate_type(sheet_name, 'formatting', dup_sheet.formatting, 'mapper.sheets')
                         dup_sheet.formatting = self._get_tbl_formatting(dup_sheet.formatting)
+                        self.parsed_sheets[dup_sheet.sheet_name] = dup_sheet
 
             except Exception as e:
                 logging.error(f'Sheet [{sheet_name}], exception: [{e}]')
