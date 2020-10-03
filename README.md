@@ -21,7 +21,7 @@ To use this project as [django admin command](https://docs.djangoproject.com/en/
 
 1. Checkout source code inside `<django_project>/management/commands`. So folder structure looks like as shown below
    <img src="./static/directory-structure-1.png" width="1000">
-2. Create `django-excel-converter.py` under `<django_project>/management/commands` and copy below code in it.
+2. Create `transformer.py` under `<django_project>/management/commands` and copy below code in it.
     ```python
     from django.core.management.base import BaseCommand
     from .django_excel_converter.common import Registry
