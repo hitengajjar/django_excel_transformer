@@ -119,21 +119,41 @@ datasets:
       - attributes: ["*"]
         references: ["$model.name"]
 
-filters:  # TODO: isn't implemented yet
-  latest_record:
-    LATEST:  # All latest record - supported with number/datetime comparable types e.g. int, float, datetime
-      attributes: ["order"]
-    ASC_SORT:
-      attributes: ["component"]
-  wo_latest_record:
-    ALL_WO_LATEST:  # All records but no latest record - supported with number/datetime comparable types e.g. int, float, datetime
-      attributes: ["order"]
-    DESC_SORT:
-      attributes: ["component"]
+filters: #provide django Q objects content
+  comp_version_exclude_record:
+    EXCLUDE:
+      or:
+        - name: "component__category__name"
+          values: ["Category1", "Category2", "Category3" ]
+        - name: "component__life_status"
+          values: ["eol"]
+  comp_exclude_record:
+    EXCLUDE:
+      or:
+        - name: "category__name"
+          values: ["Category1", "Category2", "Category3" ]
+        - name: "life_status"
+          values: ["eol"]
+  comp_deploy_exclude_record:
+    EXCLUDE:
+      or:
+        - name: "component_version__component__category__name"
+          values: ["Category1", "Category2", "Category3" ]
+        - name: "component_version__component__life_status"
+          values: ["eol"]
+
+  comp_dependency_exclude_record:
+    EXCLUDE:
+      or:
+        - name: "version__component__category__name"
+          values: ["Category1", "Category2", "Category3" ]
+        - name: "version__component__life_status"
+          values: ["eol"]
+
 
 sheets:
   - sheet_name: "CompVersions"  # Will append numeric number if sheet already exists in excel
-    filter: latest_record  # Acts as data dataview
+    filter: comp_version_exclude_record  # Acts as data dataview
     dataset: comp_version  # all columns defined in dataset is exported.
     formatting:
       tab_color: "00008B"
@@ -155,35 +175,16 @@ sheets:
           chars_wrap: 30
           read_only: true               # only export HG: TODO: and has no effect if whole worksheet is not locked
 
-#  - sheet_name: "CompVersion_wo_latest"
-#    dataset: comp_version
-#    filter: wo_latest_record  # Acts as data dataview
-#    formatting:
-#      tab_color: "00008B"
-#      position: 2
-#      data:
-#        - attributes: ["dev_*"]
-#          chars_wrap: 20
-#          comment:
-#            text: "Multiple entries, each on separate line"
-#        - attributes: ["dev_raml", "dev_repo", "dev_public_repo", "dev_jira_component", "dev_build_jenkins_job",
-#                    "dev_docs", "dev_public_docs", "dev_commit_link", "dev_api_is_public"]
-#          chars_wrap: 35
-#          comment:
-#            text: "Multiple entries separated by space"
-#        - attributes: ["owner_*"]
-#          chars_wrap: 30
-#          read_only: true               # only export
-
   - sheet_name: "Components"
     dataset: component
+    filter: comp_exclude_record  # Acts as data dataview
     formatting:
       tab_color: "00008B"
       position: 2
       data:
         - attributes: ["description"]
           chars_wrap: 50
-        - attributes: ["runtime_type", "data_privacy_class", "category", "subcategory", "vendor"]
+        - attributes: ["type", "data_privacy_class", "category", "subcategory", "vendor"]
           chars_wrap: 20
 
   - sheet_name: "CompCategories"
@@ -206,6 +207,7 @@ sheets:
 
   - sheet_name: "CompDependency"
     dataset: component_dependency
+    filter: comp_dependency_exclude_record
     formatting:
       position: 5
       read_only: true  # sheet won't be editable
@@ -219,6 +221,7 @@ sheets:
 
   - sheet_name: "CompDeployment"
     dataset: component_deployment
+    filter: comp_deploy_exclude_record
     formatting:
       position: 6
       read_only: true

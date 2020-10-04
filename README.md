@@ -1,4 +1,4 @@
-# django-excel-converter
+# django-excel-transformer
 This project aims at providing a configurable way to export/import Django models to/from excel via configuration file. 
 
 It can be used as a [django admin command](https://docs.djangoproject.com/en/3.0/howto/custom-management-commands/) or integrate with your Django application to allow import and export via browser.
@@ -23,49 +23,101 @@ To use this project as [django admin command](https://docs.djangoproject.com/en/
    <img src="./static/directory-structure-1.png" width="1000">
 2. Create `transformer.py` under `<django_project>/management/commands` and copy below code in it.
     ```python
-    from django.core.management.base import BaseCommand
-    from .django_excel_converter.common import Registry
-    from .django_excel_converter.parser import Parser
-    from .django_excel_converter.export.excel_writter import XlsWriter
-    from .django_excel_converter.export.exporter import Exporter
-    
-    class Command(BaseCommand):
-        def add_arguments(self, parser):
-            parser.add_argument('-x', '--' + 'xls_file', help='Export XLS file', required=True)
-            parser.add_argument('-c', '--' + 'config', help='Config file (preferred absolute path)', required=True)
-    
-        def handle(self, *args, **options):
-            # Registry maintains common instance for parser, exporter, importer etc. Its used for internal processing.
-            Registry.parser = Parser(options['config'])  # you need to provide location to configuration file.
-            Registry.parser.parse()  # wrap this around try-except to handle any exceptions
-            # you can check for errors using parser.errors() and resolve errors in config.YAML
-    
-            # Now instantiate exporter by providing XlsWriter(path_to_export_xls_file, should_overwrite_yes_no)
-            overwrite_yes = True
-            Registry.xlwriter = XlsWriter(options['xls_file'], overwrite_yes)
-            Registry.exporter = Exporter()
-            Registry.exporter.export()  # wrap this around try-except to handle any exceptions
+		from django.core.management.base import BaseCommand
+		from .django_excel_transformer.export.excel_writter import XlsWriter
+		from .django_excel_transformer.export.exporter import Exporter
+		from .django_excel_transformer.importer.excel_reader import XlsReader
+		from .django_excel_transformer.common import Registry
+		from .django_excel_transformer.parser import Parser
+		from .django_excel_transformer.importer.importer import Importer
+		import logging
+
+
+		class Command(BaseCommand):
+			def add_arguments(self, parser):
+
+				# parser.add_argument('opt', help='import or export', nargs='?', choices=('import','export'))
+				parser.add_argument('-c', '--' + 'config', help='Config mapper file (preferred absolute path)', required=True)
+
+				subparsers = parser.add_subparsers(help='Select from importer or exporter parser', dest='opt')
+
+				parser_import = subparsers.add_parser('import', help='Importer options')
+				parser_import.add_argument('-x', '--' + 'xls_file', help='XLS file with data for import', required=True)
+				parser_import.add_argument('-l', '--' + 'lod', help='level of details',
+										   default=0)
+				parser_import.add_argument('-r', '--' + 'report_name_prefix', help='report name prefix string e.g. DET',
+										   default='DET')
+				group = parser_import.add_mutually_exclusive_group()
+				group.add_argument('-d',
+								   help='dry run. Dont import data in DB. Provides diff between DB and XLS data.',
+									dest='dry_run', action='store_true')
+				group.add_argument('-u',
+								   help='update database with non-conflicting entries (e.g. new xls records)',
+								   dest='db_update', action='store_true')
+				group.add_argument('-f',
+								   help='updates database records',
+								   dest='db_force_update', action='store_true')
+
+				parser_export = subparsers.add_parser('export', help='Exporter options')
+				parser_export.add_argument('-x', '--' + 'xls_file', help='Export XLS file', required=True)
+				parser_export.add_argument('-o', '--overwrite', help='Overwrite existing excel file if exists',
+										   action='store_true', default=False)
+
+			def handle(self, *args, **options):
+				# Registry maintains common instance for parser, exporter, importer etc. Its used for internal processing.
+
+				debuglevel = {0: logging.CRITICAL, 1: logging.ERROR, 2:logging.INFO, 3:logging.DEBUG}
+				logging.basicConfig(
+					format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(funcName)s():%(lineno)d] %(message)s',
+					datefmt='%Y-%m-%d:%H:%M:%S',
+					level=debuglevel[options['verbosity']])
+				Registry.parser = Parser(options['config'])
+				Registry.parser.parse() # you can check for errors using parser.errors() and resolve errors in config.yml
+
+				Registry.options = options
+
+				if options['opt'] == 'import':
+					Registry.xlreader = XlsReader(options['xls_file'])
+					Registry.importer = Importer.from_registry(xls_file = options['xls_file'],
+															   lod = options['lod'],
+															   report_nm = options['report_name_prefix'],
+															   dry_run=options['dry_run'],
+															   db_update=options['db_update'],
+															   db_force_update=options['db_force_update'])
+					Registry.importer.import_sheets()
+				else:
+					# Now instantiate exporter by providing XlsWriter(path_to_export_xls_file, should_overwrite_yes_no)
+					Registry.xlwriter = XlsWriter(options['xls_file'], options['overwrite'])
+					Registry.exporter = Exporter()
+					Registry.exporter.export()  # wrap this around try-except to handle any exceptions
+
     ```
 3. Now your folder structure should look as shown below
     <img src="./static/directory-structure-2.png" width="1000">
 
 4. You can run Django command as shown below
+   Exporter
    ```bash
    cd <django_project_base_folder>
-   python ./manage django-excel-converter -x django_excel_converter_export.xlsx -c config.YAML
+   python ./manage transformer -c config/config.yml -v 3 export -o -x export.xlsx
+   ```
+   Importer
+   ```bash
+   cd <django_project_base_folder>
+   python ./manage transformer -c config/config.yml -v 3 import -x export.xlsx -u  # -u can be replaced with -d or -f
    ```
 
 5. You can also consider enable logging. In case of errors, this project dumps valuable processing information.
 
 ### Import Export from UI
-In this option, django-excel-converter project can be integrated within your Django application with predefined `config` configuration file to import/export from excel file. 
+In this option, django-excel-transformer project can be integrated within your Django application with predefined `config` configuration file to import/export from excel file. 
 
 > TODO: provide technical details
 
 ## Features
 * Control Django models for import/export using configuration file.
 * Pick and choose Django models, their attributes.
-* Declare fields to export in case of foreign dependency. (existing converters will just consider FKEY)
+* Declare fields to export in case of foreign dependency. (existing transformers will just consider FKEY)
 * Simple excel formatting while exporting to excel. Below formatting is supported - 
   * column wrap length
   * comments at column header level. You can specify - 
@@ -76,6 +128,17 @@ In this option, django-excel-converter project can be integrated within your Dja
   * Protected sheets (whole sheet, certain columns only)
   * FKEY fields have data validation enabled if related model is exported as well.
   * Many to many fields exported without data validation enabled.
+* Simple Data Filtering support in exporter - Filter conditions supported "or", "and" in context of "exclude" or "include". Filter data is converted as (django Q object)[https://docs.djangoproject.com/en/3.1/ref/models/querysets/#django.db.models.Q]. See config/config.yml for more information and an example. It supports:
+  * INCLUDE, EXCLUDE tags in config.yml. Both are exclusive of each other (configure just either of them)
+  * "or" & "and" operators
+  * only exact match (i.e. only `=` clause supported. so no support for something like `LIKE` clause)
+* Allows user to provide nested references in config.yml e.g. ComponentDeploymentModel.version.component.name
+* Importer functionality -- Importing XLS data into DB. It supports 
+  * dry_run (`-d` flag) provides report comparing DB data vs XLS data.
+  * db_force_update (`-f` flag) will override data in DB
+  * db_update (`-u` flag) will insert non-conflicting records
+  * Generates HTML report based on user provided level of detail flag `lod`
+
 
 # Technology
 1. Python3.6 -- should work with python v3.6 and above. However, its tested with python3.6
@@ -107,15 +170,12 @@ There are primarily 2 main inputs to the application -
 ## TODO & Limitations
 ### TODO
 * P1 - Auto tests
-* P1 - Importer application
 * P1 - For export, consider sheet positions in the order they are defined in config YAML file
 * P1 - Generic option to exclude specific fields at time of export. e.g. `id`
 * P1 - Dedicated classes for Parsed entities. Have a better usage of these various parsed objects within Importer and Exporter classes. This will enable better programmatic way of using library elements.
 * P1 - Externalize M2M & FKEY display formats. The characters used for separating fields needs to be escaped
-* P2 - Apply predefined filters like export latest-only, sort
 * P2 - Parser errors should point YAML line number
 * P2 - Support M2M reverse relationship. e.g. In Panopticum, we would like to export/import [`DatacenterModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L723) within [`ComponentDeploymentModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L680) sheet.
-* P2 - Support nested references e.g. ComponentDeploymentModel.version.component.name
 * P2 - Version support (atleast provide version say to Django command with `-v` option)
 * P2 - Exporter - Validate if all keys from `index_key` are exported
 * P3 - In case of export, if a model is exported to multiple excel sheets (possible due to usage of different filters), then any reference into it should be supported. e.g. [`ComponentVersionModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L365) is exported to 2 sheets `compver_latest` having all latest version and `compver_notlatest` having all versions which aren't part of `compver_latest`, while data within sheet [`ComponentDependencyModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L594) wants to provide excel data validation on [`version`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L602) field which should refer to either `compver_latest` or `compver_notlatest` 

@@ -4,6 +4,7 @@ import attr
 from box import Box
 from ..common import Registry, getdictvalue, lower
 from .excel_format import TableFormat
+from django.db.models import Q
 
 
 @attr.s
@@ -77,12 +78,28 @@ class ExportableSheet(object):
 
         logging.debug(f'Fetching data for [{self.name}]')
         self.dbdata = []
+        dbobjs = None
         if self.filters:
-            # TODO: HG: Check for filters and act accordingly.
-            # self.model.objects.only(*self.data.keys()).order_by("-order")[0]
-            pass
-        #else:
-        dbobjs = self.model.objects.only(*self.data.keys())
+            def build_query(criteria):
+                queries = None
+                if criteria.get("or"):
+                    for item in criteria.get("or"):
+                        for v in item.get("values"):
+                            queries = Q(**{item.get("name"): v}) if not queries else queries | Q(**{item.get("name"): v})
+                if criteria.get("and"):
+                    for item in criteria.get("and"):
+                        for v in item.get("values"):
+                            queries = Q(**{item.get("name"): v}) if not queries else queries & Q(**{item.get("name"): v})
+                return queries
+
+            if "EXCLUDE" in self.filters:
+                dbobjs = self.model.objects.exclude(build_query(self.filters.get("EXCLUDE")))
+            elif "INCLUDE" in self.filters:
+                dbobjs = self.model.objects.exclude(build_query(self.filters.get("INCLUDE")))
+
+        if not dbobjs:
+            dbobjs = self.model.objects.only(*self.data.keys())
+
         self.dbdata.extend([fetch_data(o, self.data) for o in dbobjs])
 
 
