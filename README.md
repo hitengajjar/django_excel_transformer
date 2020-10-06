@@ -174,6 +174,7 @@ There are primarily 2 main inputs to the application -
 * P1 - Generic option to exclude specific fields at time of export. e.g. `id`
 * P1 - Dedicated classes for Parsed entities. Have a better usage of these various parsed objects within Importer and Exporter classes. This will enable better programmatic way of using library elements.
 * P1 - Externalize M2M & FKEY display formats. The characters used for separating fields needs to be escaped
+* P2 - Importer - Report should include status about mismatch between DB and XL before updating/inserting in DB and post DB update/insert status
 * P2 - Parser errors should point YAML line number
 * P2 - Support M2M reverse relationship. e.g. In Panopticum, we would like to export/import [`DatacenterModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L723) within [`ComponentDeploymentModel`](https://github.com/perfguru87/panopticum/blob/master/panopticum/models.py#L680) sheet.
 * P2 - Version support (atleast provide version say to Django command with `-v` option)

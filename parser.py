@@ -237,7 +237,7 @@ class Parser(object):
                         fields = [k for k in model_fields.keys() if attr == '*' or re.findall('^' + attr, k)]
                         if not fields:
                             error(sheet_name, f'{ds_field}.data[{idx}].attributes[{attr}]',
-                                  f'No fields defined for  model [{model_name}]')
+                                  f'No field(s) defined for attribute [{attr}] in model [{model_name}]')
                             logging.error(error)
                             continue
                         dataset.model = model

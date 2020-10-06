@@ -115,6 +115,8 @@ class ImportableSheet:
     total_db_records: int
     total_xl_records: int
     report: Report
+    status: Status
+    read_only: bool
 
     @classmethod
     def from_sheetdata(cls, sheetdata: Box):
@@ -126,8 +128,11 @@ class ImportableSheet:
         data = getdictvalue(getdictvalue(sheetdata, 'dataset', None), 'data', None)
         model = getdictvalue(getdictvalue(sheetdata, 'dataset', None), 'model', None)
         index_keys = getdictvalue(getdictvalue(sheetdata, 'dataset', None), 'index_key', None)
+        read_only = getdictvalue(getdictvalue(sheetdata, 'formatting', False), 'read_only', False)
         obj = cls(name=sheet_nm, model=model, config_data=data, config_filters=filters,
-                  index_keys=index_keys, records=Box(), total_db_records=0, total_xl_records=0, report=Report())
+                  index_keys=index_keys, records=Box(), total_db_records=0, total_xl_records=0, report=Report(),
+                  status=Status.NO_CHANGE,
+                  read_only=read_only)
         return obj
 
     def load_xl(self):
@@ -197,6 +202,7 @@ class ImportableSheet:
                                         Mismatch(field=f, type=nm(type(value)), status=Status.CANNOT_COMPARE,
                                                  message=f'Cannot get importer for model [{ref_model}]',
                                                  extra_info=None))
+                                    # To solve this issue - add ref_model in config.yml and mark it read_only
                             else:
                                 ref_obj = ref_importer.get_record_from_dict(refs)
                                 refobjs.setdefault(f, []).append(ref_obj)
@@ -243,13 +249,10 @@ class ImportableSheet:
             record.db_record = dbobj
             (record.refobjs, record.mismatches) = self.compare(record.xl_record, record.db_record)
             if not record.mismatches:
-                # TODO: Nothing to insert in DB all well
-                record.status = Status.NO_CHANGE
-                pass
+                record.status = Status.NO_CHANGE  # Nothing to insert in DB all well
             else:
-                # TODO: Update the database based on the flags
-                record.status = Status.MISMATCH
-                pass
+                self.status = Status.MISMATCH  # Importable sheet status is either NO_CHANGE or MISMATCH
+
         for record in [r for _,r in self.records.items() if r.status == Status.XL]:
             (record.refobjs, record.mismatches) = self.compare(record.xl_record, None)  #Helps fill in the refobjs
         self._generate_compare_report()
@@ -356,7 +359,7 @@ class ImportableSheet:
                     return record
             return None
 
-    def get_report(self, lod: LOD) -> str:
+    def get_html_report(self, lod: LOD) -> str:
         """
         Generates report data and return back
         :param lod: Level of details. See class LOD
@@ -388,8 +391,7 @@ class ImportableSheet:
                 data['xl_record'] = xl_records
             if report.db_records:
                 data['db_record'] = db_records
-            html_text += pd.DataFrame(data).to_html(
-                formatters={'status': lambda x: '<b>' + x + '</b>' if x != Status.NO_CHANGE else f'{x}'})
+            html_text += pd.DataFrame(data).to_html()
         html_text += '</p>'
         return html_text
 
@@ -432,7 +434,7 @@ class ImportableSheet:
                     if f in concrete_fields:
                         datadict[f] = v
                     elif r.refobjs:
-                        if not force_update and r.refobjs[f].status != Status.NO_CHANGE:
+                        if not force_update and f in r.refobjs and True in [ref.status != Status.NO_CHANGE for ref in r.refobjs[f]]:
                             v = ','.join([re.sub('^\* ', '', i) for i in r.xl_record[f].rsplit('\n')])
                             logging.error(
                                 f" {nm(self.model)} - Wont update record [{i}] since "
@@ -440,10 +442,8 @@ class ImportableSheet:
                             logging.info(f'Mismatch Reference Object - {r.refobjs[f]}')
                             invalid_ref = True
                             break
-                        elif (f in fkey_fields) and (f in r.refobjs)\
-                                and (force_update or r.refobjs[f][0].status == Status.MISMATCH):
+                        elif f in [*fkey_fields, *r.refobjs] and (force_update or r.status == Status.XL):
                             datadict[f + '_id'] = r.refobjs[f][0].db_record.pk
-
                     else:
                         v = ','.join([re.sub('^\* ', '', i) for i in r.xl_record[f].rsplit('\n')])
                         logging.error(f" {nm(self.model)} - Wont update record [{i}] since [{f}={v}] "
@@ -456,6 +456,9 @@ class ImportableSheet:
 
                 if force_update or r.status == Status.XL:  # don't update DB if record MISMATCH & force_update is False
                                                             # filter should always return 1 object if exists else 0
+                    # TODO: HG: Below code is not compatible with django reference columns defined using `db_column`
+                    # see https://docs.djangoproject.com/en/3.1/ref/models/fields/#database-representation
+
                     (dbobj, created) = self.model.objects.update_or_create(**filter, defaults=datadict)
                     r.db_record = dbobj
                     if r.refobjs:
@@ -513,15 +516,17 @@ class Importer:
             importable_sheet = self.import_sheet(sheet_nm, model_nm, config)
             html_text += f'<br></p><hr><h3>{model_nm}</h3><p>Excel tab: {sheet_nm}</p><p>DB Table: ' \
                          f'{nm(importable_sheet.model)}</p><p>'
-            html_text += importable_sheet.get_report(int(self.options.lod))
+            html_text += importable_sheet.get_html_report(int(self.options.lod))
             html_text += '</p>'
 
-        html_file = open(f'{self.options.report_nm}-report_{datetime_str}.html', 'w')
+        self.options.report_nm = f'{self.options.report_nm}-report_{datetime_str}.html'
+        html_file = open(self.options.report_nm, 'w')
         html_text += f'<hr><p><em>This report is generated by&nbsp;</em>' \
                      f'<a href="https://github.com/hitengajjar/django-excel-transformer">' \
                      f'<em>django-excel-transformer</em></a></p>'
         html_file.write(html_text)
         html_file.close()
+        logging.info(f'{self.options.report_nm} report generated.')
 
     def import_sheet(self, sheet_nm, model_nm, config) -> Union[ImportableSheet, None]:
         """
@@ -538,6 +543,9 @@ class Importer:
             return None
         logging.info(f'Validating sheet [{sheet_nm}]')
         importable_sheet.load_n_compare()
-        if self.options.db_update or self.options.db_force_update:
-            importable_sheet.update_db(force_update=self.options.db_force_update)
+        if importable_sheet.status != Status.NO_CHANGE and (self.options.db_update or self.options.db_force_update):
+            if not importable_sheet.read_only:
+                importable_sheet.update_db(force_update=self.options.db_force_update)
+            else:
+                logging.info(f'Import skipped for sheet [{sheet_nm}] since its marked read_only in config.yml but it has mismatch.')
         return importable_sheet

@@ -1,5 +1,4 @@
 from django.core.management.base import BaseCommand
-
 from .django_excel_transformer.export.excel_writter import XlsWriter
 from .django_excel_transformer.export.exporter import Exporter
 from .django_excel_transformer.importer.excel_reader import XlsReader
@@ -65,5 +64,4 @@ class Command(BaseCommand):
             # Now instantiate exporter by providing XlsWriter(path_to_export_xls_file, should_overwrite_yes_no)
             Registry.xlwriter = XlsWriter(options['xls_file'], options['overwrite'])
             Registry.exporter = Exporter()
-            Registry.exporter.export_sheets()  # wrap this around try-except to handle any exceptions
-
+            Registry.exporter.export()  # wrap this around try-except to handle any exceptions
