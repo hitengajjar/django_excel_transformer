@@ -1,0 +1,271 @@
+---
+
+defaults: # default values picked from here.
+  formatting:  # applicable only for exporting excel.
+    read_only: false
+    hidden: false  # Sheet will be exported as hidden
+    table_style:
+      name: "TableStyleMedium2"  # Excel built-in style names. TableStyleLight1 - TableStyleLight21, TableStyleMedium1 - TableStyleMedium28, TableStyleDark1 - TableStyleDark11
+      show_last_column: false  # if set to true, excel will show last column with bold font
+      show_row_stripes: true  # if set to true, excel will show alternate rows with light colored background
+    alignment:
+      wrap_text: true
+      horizontal: justify
+    data:  # Applicable at column level
+      - attributes: ["name"]
+        chars_wrap: 20
+      - attributes: ["description"]
+        chars_wrap: 35
+      - attributes: ["*"]
+        chars_wrap: 10
+        comment:
+          text: ""  # comment will be ignored if text == ""
+          author: "admin@example.com"  # Excel shows author name along with comment. This col can be used to provide author name
+          height_len: 110
+          width_len: 230
+
+datasets:
+  comp_version:
+    model_name: "panopticum.models.ComponentVersionModel"
+    index_key: ["component", "version"]  # All index keys should be defined part of attributes
+    data:  # exporter will export columns in order they appear here.
+      - attributes: ["component"]
+        references: ["$model.name"]  # for multi-level references provide those fields separated by . e.g. $model.category.name; see below
+      - attributes: ["version"]
+      - attributes: ["dev_*"]
+        references: ["$model.name"]
+      - attributes: ["dev_raml", "dev_repo", "dev_public_repo", "dev_jira_component", "dev_build_jenkins_job",
+                  "dev_docs", "dev_public_docs", "dev_commit_link", "dev_api_is_public"]
+      - attributes: ["owner_*"]
+        references: ["$model.email"]
+
+  component:
+    model_name: "panopticum.models.ComponentModel"
+    index_key: ["name"]
+    data:
+      - attributes: ["name", "description", "life_status"]
+      - attributes: ["runtime_type", "data_privacy_class", "category", "vendor"]
+        references: ["$model.name"]
+      - attributes: ["subcategory"]
+        references: ["$model.category.name", "$model.name"]
+
+  component_category:
+    model_name: "panopticum.models.ComponentCategoryModel"
+    index_key: ["name"]
+    data:
+      - attributes: ["*"]
+
+  component_subcategory:
+    model_name: "panopticum.models.ComponentSubcategoryModel"
+    index_key: ["category", "name"]
+    data:
+      - attributes: ["category"]
+        references: ["$model.name"]
+      - attributes: ["name", "description"]
+
+  component_dependency:
+    model_name: "panopticum.models.ComponentDependencyModel"
+    index_key: ["version", "component"]
+    data:
+      - attributes: ["version"]
+        references: ["$model.component.name", "$model.version"]
+      - attributes: ["component"]
+        references: ["$model.name"]
+      - attributes: ["type", "notes"]
+
+  component_deployment:
+    model_name: "panopticum.models.ComponentDeploymentModel"
+    index_key: ["component_version", "location_class", "product_version", "environment"]
+    data:
+      - attributes: ["name", "service_name", "binary_name"]
+      - attributes: ["component_version"]
+        references: ["$model.component.name", "$model.version"]
+      - attributes: ["location_class", "product_version", "environment", "open_ports"]
+        references: ["$model.name"]
+      - attributes: ["notes"]
+
+  product_version:
+    model_name: "panopticum.models.ProductVersionModel"
+    index_key: ["name"]
+    data:
+      - attributes: ["shortname", "name", "order"]
+      - attributes: ["family"]
+        references: ["$model.name"]
+
+  language:
+    model_name: "panopticum.models.ProgrammingLanguageModel"
+    index_key: ["name"]
+    data:
+      - attributes: ["name"]
+
+  datacenter:
+    model_name: "panopticum.models.DatacenterModel"
+    index_key: ["name"]
+    data:
+      - attributes: ["*"]
+        references: ["$model.name"]
+      - attributes: ["components_deployments"]  # this will override the field loaded by previous '*'
+        references: ["$model.component_version.component.name", "$model.component_version.version",
+                     "$model.location_class.name", "$model.product_version.name", "$model.environment.name"]
+
+  _multi_tables:  # Special case, should be used with special name
+    model_names: ["panopticum.models.ORMModel", "panopticum.models.FrameworkModel","panopticum.models.ComponentDataPrivacyClassModel",
+                  "panopticum.models.ComponentRuntimeTypeModel","panopticum.models.CountryModel","panopticum.models.DatabaseVendorModel",
+                  "panopticum.models.DeploymentEnvironmentModel", "panopticum.models.DeploymentLocationClassModel",
+                  "panopticum.models.LoggerModel", "panopticum.models.ProductFamilyModel", "panopticum.models.SoftwareVendorModel",
+                  "panopticum.models.TCPPortModel"]
+    index_key: ["name"]
+    data:
+      - attributes: ["*"]
+        references: ["$model.name"]
+
+filters: #provide django Q objects content
+  comp_version_exclude_record:
+    EXCLUDE:
+      or:
+        - name: "component__category__name"
+          values: ["Category1", "Category2", "Category3" ]
+        - name: "component__life_status"
+          values: ["eol"]
+  comp_exclude_record:
+    EXCLUDE:
+      or:
+        - name: "category__name"
+          values: ["Category1", "Category2", "Category3" ]
+        - name: "life_status"
+          values: ["eol"]
+  comp_deploy_exclude_record:
+    EXCLUDE:
+      or:
+        - name: "component_version__component__category__name"
+          values: ["Category1", "Category2", "Category3" ]
+        - name: "component_version__component__life_status"
+          values: ["eol"]
+
+  comp_dependency_exclude_record:
+    EXCLUDE:
+      or:
+        - name: "version__component__category__name"
+          values: ["Category1", "Category2", "Category3" ]
+        - name: "version__component__life_status"
+          values: ["eol"]
+
+
+sheets:
+  - sheet_name: "CompVersions"  # Will append numeric number if sheet already exists in excel
+    filter: comp_version_exclude_record  # Acts as data dataview
+    dataset: comp_version  # all columns defined in dataset is exported.
+    formatting:
+      tab_color: "00008B"
+      position: 1
+      data:
+        - attributes: ["component"]
+          chars_wrap: 20
+        - attributes: ["dev_raml", "dev_repo", "dev_public_repo", "dev_jira_component", "dev_build_jenkins_job",
+                    "dev_docs", "dev_public_docs", "dev_commit_link", "dev_api_is_public"]
+          chars_wrap: 25
+          comment:
+            text: "Multiple entries separated by space"
+        - attributes: ["dev_*"]  # sequence of dev_* matters, wildcard entries should be at the end and absolute entries should be before it
+                              #  the first match entry is always chosen
+          chars_wrap: 20
+          comment:
+            text: "Multiple entries, each on separate line and starts with '* '"
+        - attributes: ["owner_*"]
+          chars_wrap: 30
+          read_only: true               # only export HG: TODO: and has no effect if whole worksheet is not locked
+
+  - sheet_name: "Components"
+    dataset: component
+    filter: comp_exclude_record  # Acts as data dataview
+    formatting:
+      tab_color: "00008B"
+      position: 2
+      data:
+        - attributes: ["description"]
+          chars_wrap: 50
+        - attributes: ["type", "data_privacy_class", "category", "subcategory", "vendor"]
+          chars_wrap: 20
+
+  - sheet_name: "CompCategories"
+    dataset: component_category
+    formatting:
+      position: 3
+      data:
+        - attributes: ["description"]
+          chars_wrap: 50
+
+  - sheet_name: "CompSubCategories"
+    dataset: component_subcategory
+    formatting:
+      position: 4
+      data:
+        - attributes: ["category"]
+          chars_wrap: 20
+        - attributes: ["description"]
+          chars_wrap: 50
+
+  - sheet_name: "CompDependency"
+    dataset: component_dependency
+    filter: comp_dependency_exclude_record
+    formatting:
+      position: 5
+      read_only: true  # sheet won't be editable
+      data:
+        - attributes: ["version"]
+          chars_wrap: 30
+        - attributes: ["component"]
+          chars_wrap: 20
+        - attributes: ["notes"]
+          chars_wrap: 50
+
+  - sheet_name: "CompDeployment"
+    dataset: component_deployment
+    filter: comp_deploy_exclude_record
+    formatting:
+      position: 6
+      read_only: true
+      data:
+        - attributes: ["open_ports"] # additional properties for open_port
+          comment:
+            text: "Allows multiple entries in a cell. Prefix each entry with '* ' and end with end of line. Each entry should match `name` in TCPPortModel. e.g. * HTTP-8080"
+          read_only: true
+        - attributes: ["notes"]
+          chars_wrap: 50
+        - attributes: ["service_name", "binary_name", "component_version", "location_class", "product_version", "environment"]
+          chars_wrap: 20
+
+  - sheet_name: "Languages"
+    dataset: language
+    formatting:
+      position: 7
+
+  - sheet_name: "ProdVersion"
+    dataset: product_version
+    formatting:
+      position: 8
+      read_only: true
+      data:
+        - attributes: ["family"]
+          chars_wrap: 30
+
+  - sheet_name: "DataCenters"
+    dataset: datacenter
+    formatting:
+      position: 9
+      read_only: true
+      data:
+        - attributes: ["grafana", "metrics", "info"]
+          chars_wrap: 30
+        - attributes: ["components_deployments"]
+          chars_wrap: 80
+
+  - sheet_name: "*" # use model_name as name
+    dataset: _multi_tables
+    formatting:
+      position: -1  # Append
+      read_only: true
+      data:
+        - attributes: ["info"]
+          chars_wrap: 30
+
