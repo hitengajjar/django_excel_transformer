@@ -117,7 +117,7 @@ In this option, django-excel-transformer project can be integrated within your D
 ## Features
 * Control Django models for import/export using configuration file.
 * Pick and choose Django models, their attributes.
-* Declare fields to export in case of foreign dependency. (existing transformers will just consider FKEY)
+* Declare fields to export in case of foreign dependency.
 * Simple excel formatting while exporting to excel. Below formatting is supported - 
   * column wrap length
   * comments at column header level. You can specify - 
