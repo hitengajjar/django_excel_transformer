@@ -95,7 +95,7 @@ class ExportableSheet(object):
             if "EXCLUDE" in self.filters:
                 dbobjs = self.model.objects.exclude(build_query(self.filters.get("EXCLUDE")))
             elif "INCLUDE" in self.filters:
-                dbobjs = self.model.objects.exclude(build_query(self.filters.get("INCLUDE")))
+                dbobjs = self.model.objects.filter(build_query(self.filters.get("INCLUDE")))
 
         if not dbobjs:
             dbobjs = self.model.objects.only(*self.data.keys())
